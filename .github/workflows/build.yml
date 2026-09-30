@@ -1,0 +1,218 @@
+# LxBox — CI/CD (Manual release only, ARM64 only, version from upstream, Cached)
+#
+# Запуск: только вручную через workflow_dispatch.
+# Собирает arm64-v8a APK, используя версию последнего тега из upstream (Leadaxe/LxBox),
+# создаёт GitHub Release и обновляет docs/latest.json.
+
+name: CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine exact version from upstream tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Запрашиваем последний тег из upstream-репозитория
+          UPSTREAM_TAG=$(curl -sL "https://api.github.com/repos/Leadaxe/LxBox/tags" \
+            | grep -oP '"name":\s*"v[0-9]+\.[0-9]+\.[0-9]+"' \
+            | head -1 \
+            | grep -oP 'v[0-9]+\.[0-9]+\.[0-9]+')
+
+          if [ -z "$UPSTREAM_TAG" ]; then
+            echo "::error::Не удалось получить последний тег из upstream (Leadaxe/LxBox)."
+            exit 1
+          fi
+
+          VERSION="${UPSTREAM_TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" == *-rc.* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Using upstream tag: $UPSTREAM_TAG (version: $VERSION)"
+
+      - name: Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: 'gradle'
+
+      - name: Fetch sing-box-lx core (libbox.aar)
+        working-directory: .
+        run: ./scripts/fetch-libbox.sh
+
+      - name: Flutter version pin
+        id: flutter_pin
+        working-directory: app
+        run: echo "version=$(tr -d '[:space:]' < android/flutter.version)" >> "$GITHUB_OUTPUT"
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ steps.flutter_pin.outputs.version }}
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle wrapper and dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Inject exact release version
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::Версия '$VERSION' не semver."
+            exit 1
+          fi
+          CODE_VERSION="$VERSION"
+          BUILD_NUMBER=$(../scripts/version-code.sh "$CODE_VERSION" universal)
+          sed -i.bak -E "s/^version: .*/version: $VERSION+$BUILD_NUMBER/" pubspec.yaml
+          rm -f pubspec.yaml.bak
+          echo "Injected: $VERSION+$BUILD_NUMBER (base, ABI=0)"
+          {
+            echo "VERSION_NAME=$VERSION"
+            echo "CODE_VERSION=$CODE_VERSION"
+          } >> "$GITHUB_ENV"
+
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Android release keystore (optional)
+        working-directory: app
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret; release APK will use debug signing."
+            exit 0
+          fi
+          : "${ANDROID_KEYSTORE_PASSWORD:?Set ANDROID_KEYSTORE_PASSWORD when BASE64 is set}"
+          : "${ANDROID_KEY_PASSWORD:?Set ANDROID_KEY_PASSWORD when BASE64 is set}"
+          : "${ANDROID_KEY_ALIAS:?Set ANDROID_KEY_ALIAS when BASE64 is set}"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/upload-keystore.jks
+          {
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "storeFile=upload-keystore.jks"
+          } > android/key.properties
+
+      - name: Build APK (arm64-v8a)
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=build/app/outputs/flutter-apk
+          VARIANT="arm64-v8a"
+          PLATFORM="android-arm64"
+          ABI_FILTER="arm64-v8a"
+          CODE=$(../scripts/version-code.sh "$CODE_VERSION" "$VARIANT")
+          echo "::group::Build $VARIANT (versionCode=$CODE)"
+          LXBOX_ABI_FILTER="$ABI_FILTER" \
+            flutter build apk --release \
+              --target-platform "$PLATFORM" \
+              --build-name "$VERSION_NAME" --build-number "$CODE"
+          mv "$OUT/app-release.apk" "$OUT/app-${VARIANT}-release.apk"
+          echo "::endgroup::"
+          ls -la "$OUT"/app-*-release.apk
+
+      - name: Prepare APK for release
+        working-directory: app
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          VARIANT="arm64-v8a"
+          cp "build/app/outputs/flutter-apk/app-${VARIANT}-release.apk" "../LxBox-${VERSION}-${VARIANT}.apk"
+          ls -la ../LxBox-*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: LxBox ${{ steps.meta.outputs.version }}
+          draft: false
+          prerelease: ${{ steps.meta.outputs.is_prerelease == 'true' }}
+          files: LxBox-${{ steps.meta.outputs.version }}-arm64-v8a.apk
+          body_path: RELEASE_NOTES.md
+
+      - name: Update docs/latest.json
+        if: steps.meta.outputs.is_prerelease != 'true'
+        working-directory: .
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p docs
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          BASE="https://github.com/Leadaxe/LxBox/releases/download/${TAG}"
+          cat > docs/latest.json <<EOF
+          {
+            "\$schema": "https://github.com/Leadaxe/LxBox/blob/main/docs/latest.json",
+            "tag": "${TAG}",
+            "name": "L×Box ${VERSION}",
+            "published_at": "${NOW}",
+            "html_url": "https://github.com/Leadaxe/LxBox/releases/tag/${TAG}",
+            "apk_url": "${BASE}/LxBox-${VERSION}-arm64-v8a.apk",
+            "apk_urls": {
+              "arm64-v8a":   "${BASE}/LxBox-${VERSION}-arm64-v8a.apk"
+            },
+            "min_supported": "1.0.0",
+            "_comment": "Updated automatically by CI on every release tag push (see .github/workflows/ci.yml). Used by UpdateChecker as a fallback when api.github.com is rate-limited. apk_url = arm64-v8a fallback."
+          }
+          EOF
+          cat docs/latest.json
+
+      - name: Commit & push (main)
+        if: steps.meta.outputs.is_prerelease != 'true'
+        working-directory: .
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet docs/latest.json; then
+            echo "No change in docs/latest.json — skipping commit."
+            exit 0
+          fi
+          git add docs/latest.json
+          git commit -m "chore(release): update docs/latest.json → ${{ steps.meta.outputs.tag }} [skip ci]"
+          git push origin HEAD:main
