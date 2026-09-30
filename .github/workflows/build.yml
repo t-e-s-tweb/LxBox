@@ -4,7 +4,7 @@
 # Собирает arm64-v8a APK, используя версию последнего тега из upstream (Leadaxe/LxBox),
 # создаёт GitHub Release и обновляет docs/latest.json.
 
-name: CI
+name: Build
 
 on:
   workflow_dispatch:
