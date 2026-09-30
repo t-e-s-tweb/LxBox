@@ -176,33 +176,7 @@ jobs:
           files: LxBox-${{ steps.meta.outputs.version }}-arm64-v8a.apk
           body_path: RELEASE_NOTES.md
 
-      - name: Update docs/latest.json
-        if: steps.meta.outputs.is_prerelease != 'true'
-        working-directory: .
-        env:
-          TAG: ${{ steps.meta.outputs.tag }}
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          mkdir -p docs
-          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          BASE="https://github.com/Leadaxe/LxBox/releases/download/${TAG}"
-          cat > docs/latest.json <<EOF
-          {
-            "\$schema": "https://github.com/Leadaxe/LxBox/blob/main/docs/latest.json",
-            "tag": "${TAG}",
-            "name": "L×Box ${VERSION}",
-            "published_at": "${NOW}",
-            "html_url": "https://github.com/Leadaxe/LxBox/releases/tag/${TAG}",
-            "apk_url": "${BASE}/LxBox-${VERSION}-arm64-v8a.apk",
-            "apk_urls": {
-              "arm64-v8a":   "${BASE}/LxBox-${VERSION}-arm64-v8a.apk"
-            },
-            "min_supported": "1.0.0",
-            "_comment": "Updated automatically by CI on every release tag push (see .github/workflows/ci.yml). Used by UpdateChecker as a fallback when api.github.com is rate-limited. apk_url = arm64-v8a fallback."
-          }
-          EOF
-          cat docs/latest.json
-
+     
       - name: Commit & push (main)
         if: steps.meta.outputs.is_prerelease != 'true'
         working-directory: .
