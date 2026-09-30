@@ -478,10 +478,8 @@ jobs:
             mv "$OUT/app-release.apk" "$OUT/app-${VARIANT}-release.apk"
             echo "::endgroup::"
           }
-          build_one universal   "android-arm,android-arm64,android-x64" ""
-          build_one armeabi-v7a android-arm                             armeabi-v7a
           build_one arm64-v8a   android-arm64                           arm64-v8a
-          build_one x86_64      android-x64                             x86_64
+                            
           ls -la "$OUT"/app-*-release.apk
 
       - name: Upload APKs (release)
