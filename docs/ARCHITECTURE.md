@@ -479,7 +479,7 @@ An asset template read once through `TemplateLoader.load()` (a singleton, deep-c
 
 | Section | Role | Example / where it is used |
 |---|---|---|
-| `parser_config` | The sing-box `version` plus the reload interval | Emitted straight into the root |
+| `parser_config` | A legacy block (`version`, `parser.reload`); the app does not read it (§593) | Stays in the template for its shape only |
 | `dns_options.servers` | The canonical DNS servers (system/google/cloudflare/quad9/adguard). Storage keeps `dns.servers[]` records (§439). | Resolved into bodies by `resolveDnsServersBodies` |
 | `dns_options.rules` | The default DNS rules. Storage keeps `dns.rules[]` records (§061 dns-rules-refactor, formerly feature §041; §439). | Resolved by `resolveDnsRulesList` |
 | `ping_options`, `speed_test_options` | UI features (HomeScreen, SpeedTest) | Never reach the sing-box config |
@@ -645,7 +645,7 @@ codec/                       # §439 — model ↔ record, pure functions, toler
 node_link.dart               # §439 (D-112) NodeLink {folderId, tag} — a reference to a node; empty folderId = root
 node_entries.dart            # NodeEntries{main, detours} — the result of getEntries
 emit_context.dart            # the abstract EmitContext: allocateTag/addEntry plus selector and auto registration
-template_vars.dart           # TemplateVars — the global emit flags (tls_fragment/mux/sniOverride)
+template_vars.dart           # TemplateVars — the emit parameter, no fields since §593
 tls_spec.dart                # TlsSpec + RealitySpec (utls/reality/alpn) → toSingbox()
 transport_spec.dart          # the sealed TransportSpec (Ws/Grpc/Http/HttpUpgrade/Xhttp); XHTTP is a native
                              #   emit (§097, the core's with_xhttp: mode/x_padding_bytes/no_grpc_header)
@@ -1186,7 +1186,7 @@ L×Box's state lives in two places with different semantics:
 
 ```
 app/assets/wizard_template.json     # rootBundle.loadString(), template_loader.dart
-├── parser_config           # §026 — version + reload interval
+├── parser_config           # §026 — legacy, not read by the app (§593)
 ├── dns_options             # §043+§044 — default DNS servers + rules
 ├── ping_options            # §040 — default URL + presets
 ├── speed_test_options      # §015 — speed-test endpoints
@@ -1250,7 +1250,7 @@ the README names the version that ships in the APK.
 │                           #   storage_version (§439) / vars / sources[] (subscriptions, servers,
 │                           #   folders, then chains) / rules[] / dns{} / ping_options /
 │                           #   route_final / directions[] (§125/§393, replaces enabled_groups) /
-│                           #   last_global_update / presets_migrated / directions_migrated
+│                           #   last_global_update (legacy, §593) / presets_migrated / directions_migrated
 ├── lxbox_settings.json.v0.bak  # §439 — the 2.23.2-form original, copied once before the migration
 ├── rule_sets/              # §011 — the cache of binary .srs files (+ §366 .meta.json sidecars)
 │   └── <ruleId>.srs
