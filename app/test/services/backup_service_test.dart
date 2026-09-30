@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:lxbox/models/node_link.dart';
+import 'package:lxbox/models/source_chain.dart';
 import 'package:lxbox/services/backup_service.dart';
 import 'package:lxbox/services/settings_storage.dart';
 
@@ -169,8 +171,61 @@ void main() {
         '1', reason: 'wizard_* из файла не импортируется — остаётся флаг устройства');
     expect(
         await SettingsStorage.getVar(SettingsStorage.notificationPromptVar, ''),
-        '0',
-        reason: 'ключ из allowlist, который в файле есть, побеждает');
+        '1',
+        reason: '§600 — флаг уведомлений обрабатывается как wizard_*');
+  });
+
+  // §600 — флаги стартовых промптов едут в экспорт, импорт их не применяет и
+  // не считает неизвестными ключами; default-deny для чужих ключей прежний.
+  group('§600 — флаги стартовых промптов при импорте', () {
+    const all = {
+      BackupCategory.serverLists,
+      BackupCategory.routing,
+      BackupCategory.appSettings,
+      BackupCategory.debugConfig,
+    };
+
+    for (final merge in [false, true]) {
+      test('export → import (merge=$merge): флаги не в droppedKeys, '
+          'на получателе прежние', () async {
+        await seedStorage(sampleSnapshot());
+        for (final k in SettingsStorage.startupPromptVarKeys) {
+          await SettingsStorage.setVar(k, '1');
+        }
+        final svc = const BackupService();
+        final exported = await svc.buildExport(include: all);
+        final vars = (jsonDecode(exported) as Map)['storage']['vars'] as Map;
+        for (final k in SettingsStorage.startupPromptVarKeys) {
+          expect(vars[k], '1', reason: '$k едет в экспорт');
+        }
+        // Получатель: свои значения флагов.
+        for (final k in SettingsStorage.startupPromptVarKeys) {
+          await SettingsStorage.setVar(k, '0');
+        }
+        final apply = await svc.applyImport(await svc.parseImport(exported),
+            merge: merge, include: all);
+        expect(apply.errors, isEmpty);
+        expect(apply.droppedKeys, isEmpty);
+        for (final k in SettingsStorage.startupPromptVarKeys) {
+          expect(await SettingsStorage.getVar(k, ''), '0',
+              reason: '$k из файла не взят');
+        }
+      });
+
+      test('чужой ключ рядом с флагами отбрасывается (merge=$merge)',
+          () async {
+        await seedStorage(sampleSnapshot());
+        final dropped = await SettingsStorage.replaceRaw({
+          'vars': {
+            for (final k in SettingsStorage.startupPromptVarKeys) k: '1',
+            'alien_var_600': 'x',
+          },
+        }, merge: merge);
+        expect(dropped, ['vars.alien_var_600']);
+        final raw = await SettingsStorage.exportRaw();
+        expect((raw['vars'] as Map).containsKey('alien_var_600'), isFalse);
+      });
+    }
   });
 
   test('replaceRaw with merge=true preserves untouched keys', () async {
@@ -847,6 +902,147 @@ void main() {
       final raw = await rawStorage();
       expect(raw['directions_migrated'], true);
       expect(raw.containsKey('channels'), isFalse);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // §599 — replace заменяет только отмеченные категории. Отмеченная категория
+  // заменяется целиком содержимым файла (ключ, которого в файле нет, у
+  // получателя удаляется), неотмеченная не трогается. До §599 replace
+  // перезаписывал весь документ настроек и стирал неотмеченные категории.
+  // ---------------------------------------------------------------------------
+  group('§599 — replace по категориям', () {
+    const allCategories = {
+      BackupCategory.serverLists,
+      BackupCategory.routing,
+      BackupCategory.appSettings,
+      BackupCategory.debugConfig,
+    };
+
+    /// Блок `storage` файла: свои источники, правила, DNS, vars; `tun_apps`
+    /// (категория Routing) в файле нет.
+    Map<String, dynamic> fileStorage() => {
+          'storage_version': 1,
+          'vars': {'log_level': 'debug'},
+          'sources': [
+            {
+              'kind': 'subscription',
+              'id': 'src-file',
+              'name': 'File subs',
+              'enabled': true,
+              'url': 'https://example.org/file-sub',
+              'update': {'interval_hours': 12},
+            },
+          ],
+          'rules': [
+            {
+              'kind': 'inline',
+              'id': 'rule-file',
+              'name': 'File rule',
+              'enabled': true,
+              'body': {
+                'domain_suffix': ['example.org'],
+                'outbound': 'vpn-1',
+              },
+            },
+          ],
+          'route_final': 'vpn-2',
+          'directions': [
+            {'tag': 'vpn-1', 'label': 'File-Main', 'enabled': true},
+            {'tag': 'vpn-2', 'label': 'File-Backup', 'enabled': true},
+          ],
+          'directions_migrated': true,
+          'dns': {
+            'servers': [
+              {
+                'kind': 'user',
+                'tag': 'quad9',
+                'enabled': true,
+                'body': {'type': 'udp', 'server': '9.9.9.9'},
+              },
+            ],
+          },
+        };
+
+    String archive() => jsonEncode({
+          'app': 'lxbox',
+          'kind': 'backup',
+          'storage': fileStorage(),
+        });
+
+    /// Получатель: подписка, цепочка, правила, DNS, tun_apps, vars.
+    Future<void> seedReceiver() async {
+      await seedStorage(sampleSnapshot());
+      await SettingsStorage.setChains(const [
+        SourceChain(tag: 'mine', hops: [NodeLink(tag: 'a'), NodeLink(tag: 'b')])
+      ]);
+    }
+
+    Future<BackupApplyResult> replace(Set<BackupCategory> include) async {
+      final svc = const BackupService();
+      return svc.applyImport(await svc.parseImport(archive()),
+          merge: false, include: include);
+    }
+
+    test('только Routing: правила и DNS из файла, подписки и цепочка на месте',
+        () async {
+      await seedReceiver();
+      final result = await replace({BackupCategory.routing});
+      expect(result.errors, isEmpty);
+
+      expect((await SettingsStorage.getCustomRules()).single.name, 'File rule');
+      final raw = await SettingsStorage.exportRaw();
+      expect(raw['dns'], fileStorage()['dns']);
+      expect(raw['route_final'], 'vpn-2');
+      expect((await SettingsStorage.getServerLists()).map((l) => l.id),
+          ['src-1'],
+          reason: 'неотмеченная Server lists не трогается');
+      expect((await SettingsStorage.getChains()).map((c) => c.tag), ['mine']);
+      expect((raw['vars'] as Map)['log_level'], 'info',
+          reason: 'неотмеченная App settings — vars получателя');
+      expect((raw['vars'] as Map)['debug_token'], 'secret-token-xyz');
+    });
+
+    test('только Server lists: sources[] из файла, правила получателя на месте',
+        () async {
+      await seedReceiver();
+      final result = await replace({BackupCategory.serverLists});
+      expect(result.errors, isEmpty);
+
+      expect((await SettingsStorage.getServerLists()).map((l) => l.id),
+          ['src-file']);
+      expect(await SettingsStorage.getChains(), isEmpty,
+          reason: 'в файле цепочек нет — отмеченная категория заменена '
+              'целиком');
+      expect((await SettingsStorage.getCustomRules()).single.name, 'Ru Apps');
+      final raw = await SettingsStorage.exportRaw();
+      expect(raw['dns'], sampleSnapshot()['dns']);
+      expect(raw['tun_apps'], sampleSnapshot()['tun_apps']);
+    });
+
+    test('ключ отмеченной категории, которого нет в файле, удаляется',
+        () async {
+      await seedReceiver();
+      await replace({BackupCategory.routing});
+      final raw = await SettingsStorage.exportRaw();
+      expect(raw.containsKey('tun_apps'), isFalse,
+          reason: 'замена, а не слияние: tun_apps (Routing) в файле нет');
+      expect(raw.containsKey('enabled_groups'), isFalse);
+    });
+
+    test('все категории: тот же документ, что полная замена', () async {
+      await seedReceiver();
+      await replace(allCategories);
+      final perCategory = await SettingsStorage.exportRaw();
+
+      SettingsStorage.resetCacheForTesting();
+      await seedReceiver();
+      final svc = const BackupService();
+      final contents = await svc.parseImport(archive());
+      await SettingsStorage.replaceRaw(contents.storage!);
+      final whole = await SettingsStorage.exportRaw();
+
+      expect(jsonEncode(perCategory), jsonEncode(whole));
     });
   });
 }

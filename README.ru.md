@@ -13,7 +13,7 @@ Android-клиент на ядре [sing-box-lx](https://github.com/Leadaxe/sing
   <a href="https://github.com/Leadaxe/LxBox"><img src="docs/badges/get-it-on-github.png" alt="Get it on GitHub" height="80"></a>
 </p>
 
-**[Скачать последний релиз](https://github.com/Leadaxe/LxBox/releases/latest)** | **[English README](README.md)** | **[Руководство пользователя](docs/USER_GUIDE.ru.md)** | **[Поддержать проект](docs/DONATE.ru.md)**
+**[Скачать последний релиз](https://github.com/Leadaxe/LxBox/releases/latest)** | **[English README](README.md)** | **[Руководство пользователя](docs/USER_GUIDE.ru.md)** | **[Поддержать проект](docs/DONATE.ru.md)** | **[Реестр публичных серверов](docs/PUBLIC_SOURCES.ru.md)**
 
 ---
 
@@ -87,7 +87,7 @@ Android-клиент на ядре [sing-box-lx](https://github.com/Leadaxe/sing
 
 Добавляйте серверы по URL подписки, прямой ссылке, WireGuard URI/INI, Amnezia `vpn://`-ссылке, raw sing-box JSON — отдельным outbound'ом или **конфигом целиком**, из которого приезжают узлы, группы автовыбора и цепочки detour (§368) — или через **Import from file…** (локальный `.txt`/`.json`; файл более чем с одной нодой становится файловой подпиской, §129). Умный диалог вставки определяет формат автоматически и показывает превью. Включение/отключение подписок без удаления. Офлайн-rehydrate — ноды восстанавливаются из кеша тела при старте приложения.
 
-- **13 протоколов**: VLESS (вкл. постквантовое шифрование ML-KEM-768, §335), VMess, Trojan, Shadowsocks, Hysteria2, **TUIC v5**, **NaïveProxy**, **AnyTLS** (§269), SSH, SOCKS, WireGuard (вкл. **AmneziaWG / AWG 2.0** — `awg://` URI, AmneziaWG `.conf`, **Amnezia `vpn://`-ссылки**, JSON), **MASQUE** (Cloudflare WARP — `masque://`, QUIC/HTTP-3), **Tailscale** (endpoint sing-box, который сам входит в ваш tailnet; узел носит с собой DNS-сервер, правило `.ts.net` и маршрут `100.64.0.0/10` — §435)
+- **13 протоколов**: VLESS (вкл. постквантовое шифрование ML-KEM-768, §335), VMess, Trojan, Shadowsocks, Hysteria2, **TUIC v5**, **NaïveProxy**, **AnyTLS** (§269), SSH, SOCKS, WireGuard (вкл. **AmneziaWG / AWG 2.0** — `awg://` URI, AmneziaWG `.conf`, **Amnezia `vpn://`-ссылки**, JSON), **MASQUE** (Cloudflare WARP — `masque://`, QUIC/HTTP-3), **Tailscale** (endpoint sing-box, который сам входит в ваш tailnet; пресет Tailscale даёт каждому узлу его MagicDNS-сервер и ведёт трафик tailnet к нему через `preferred_by`, без жёстких правил `.ts.net` и маршрутов `100.64.0.0/10` — §578)
 - Форматы: Base64, Xray JSON Array (вкл. цепочки dialerProxy и все протоколы массива, §321), plain text, sing-box JSON — outbound, массив, конфиг целиком или массив конфигов, с группами и цепочками `detour` (§368)
 - **Дедупликация узлов** (§321) — один сервер, перечисленный в подписке несколько раз, становится одним узлом
 - **Авто-узлы** (§322) — провайдерский пункт «Авто | Лучший сервер» приезжает одним узлом с пулом внутри: в строке виден режим и состав (`🔀 [15/7]` — балансировка, `🎯 [3]` — один быстрейший). Свой авто-узел можно собрать в папке: «Add auto node…» — членство по regex-правилу, списку галочками или «все серверы папки»
