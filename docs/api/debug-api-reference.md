@@ -229,6 +229,7 @@ curl -X POST -H "$HDR" "$BASE/logs/clear?source=core"
 | Endpoint | Query | Что делает |
 |---|---|---|
 | `POST /action/urltest` | `tag=<node>` \| `group=<tag>` \| `all=true` \| `cancel=1` | единый URLTest-диспатч (ровно один scope): `tag` — single-node; `group` — групповой URLTest ядра (§308: force-тест ВСЕХ членов + переселект на живой узел; fire-and-forget — `ok` значит «команда принята», результат смотреть через `GET /state` → `active_in_group`; URL — из конфига группы, не из ping settings; 409 если tunnel down); `all` — mass-ping всех нод активной группы (concurrency 10); `cancel=1` — отмена in-flight mass-ping (§163, epoch-bump; уже запущенные групповые прогоны в ядре не отменяет). → `{ok,action,scope,...}` |
+| `POST /action/urltest-all` | — | §625: групповой URLTest ядра (как `urltest?group=`, §308) для **каждой** urltest-группы текущего состояния, последовательно; fire-and-forget. Не mass-ping узлов (`urltest?all=true`), селекторы Направлений не трогает. Общий обработчик с Intent `URLTEST_ALL` и командой плагина `urltest-all`. 409 если tunnel down; нет urltest-групп — не ошибка (`groups:0`). → `{ok, action:"urltest-all", groups:N}` |
 | `POST /action/switch-node` | `tag=<tag>` | selector switch на node. 409 если не выбрана группа |
 | `POST /action/set-group` | `group=<tag>` | смена активной группы |
 | `POST /action/start-vpn` | — | `runCoreRejectGuard(guard=false)` → прежний `home.start()` через Activity (может показать consent-диалог), **без** цикла страховки. Публичный Intent API (§047) этот путь не зовёт — native `LxBoxIntentReceiver` идёт в `BoxVpnService.start` напрямую |
@@ -382,6 +383,25 @@ curl -s -H "$HDR" "$BASE/subs" \
   | jq '.[] | select(.kind=="UserServer") | {id, skip_presets}'
 ```
 
+§636 — у каждой записи `/subs` (подписка, папка, одиночный сервер) и у члена
+папки есть поле `tls` — переопределение ручек раздела TLS Fragmentation:
+`{fragment, record_fragment, fallback_delay, mixed_case_sni}`, не заданное
+поле — `null`, запись без политики — `{}`. У подписки и папки это уровень
+источника, у одиночного сервера и члена папки — узловой. Сборка разрешает
+каждое поле отдельно: узел → источник → глобальные `vars`.
+
+`PATCH /subs/{id}` и `PATCH /folders/{id}/members/{idx}` принимают `tls` —
+объект: ключа нет — поле не меняется, `null` — сброс в «наследовать».
+Неизвестный ключ, значение не того типа или `fallback_delay`, которую ядро не
+разберёт как длительность (`500`, `fast`), → 400, ничего не меняется.
+Config-significant → `?rebuild=true`, чтобы применить.
+
+```bash
+# выключить фрагментацию одному члену папки при глобально включённой
+curl -s -X PATCH -H "$HDR" "$BASE/folders/$FID/members/0?rebuild=true" \
+  -d '{"tls":{"fragment":false,"record_fragment":false}}' | jq '.member.tls'
+```
+
 **§524 — `GET /subs` отдаёт ВЕСЬ список источников** в порядке `sources[]`, тот
 же, что видит пользователь на экране Servers: подписки, серверы, папки **и
 цепочки** одним массивом. До §524 ответ нёс только контейнеры, а цепочки жили в
@@ -408,7 +428,7 @@ curl -s -H "$HDR" "$BASE/subs" \
 | `/subs` | GET | `?reveal=true` — clear URLs |
 | `/subs` | POST | `{"input":"<url\|URI\|WG-ini\|JSON-outbound>"}` |
 | `/subs/{id}` | GET | `?reveal=true`, `?warnings=true` — см. ниже |
-| `/subs/{id}` | PATCH | subset: name/enabled/tag_prefix/update_interval_hours/override_detour/register_detour_{servers,in_auto}/use_detour_servers/replace_detour_chain/url + **§346**: on_update_action/import_rules_enabled/identity. **§439:** `override_detour` — ссылка на узел `{folder_id?, tag}`, `null` снимает |
+| `/subs/{id}` | PATCH | subset: name/enabled/tag_prefix/update_interval_hours/override_detour/register_detour_{servers,in_auto}/use_detour_servers/replace_detour_chain/url + **§346**: on_update_action/import_rules_enabled/identity + **§636**: `tls` (частичная правка, `null` — наследовать). **§439:** `override_detour` — ссылка на узел `{folder_id?, tag}`, `null` снимает |
 | `/subs/{id}` | DELETE | — |
 | `/subs/{id}/refresh` | POST | trigger fetch. 409 для UserServer |
 | `/subs/reorder` | POST | **§524** `{"order":[source_key,...]}` — ключи ЛЮБОГО рода (`id:<uuid>` / `chain:<tag>`), состав обязан совпасть с текущим списком. Голый uuid тоже принимается (форма до §524). Одна запись на диск |
@@ -1003,7 +1023,7 @@ credentials (URI/ключи) → по умолчанию скрыт, `?reveal=tr
 | `/folders/{id}` | GET | — |
 | `/folders/{id}` | DELETE | `?keep_servers=true` — вынести членов одиночными серверами (default false — удалить совсем) |
 | `/folders/{id}/members` | POST | ровно одно из: `{"input":"<uri\|WG-ini\|JSON>","name_fallback"?}` (paste) или `{"url":"..."}` (одноразовый снапшот: URL не хранится, авто-обновления нет) |
-| `/folders/{id}/members/{idx}` | PATCH | subset `{raw,enabled,detour}` — §578: `skip_presets` в GET read-only, PATCH не принимает |
+| `/folders/{id}/members/{idx}` | PATCH | subset `{raw,enabled,detour,tls}` (§636: `tls` — узловая политика, правила как у `PATCH /subs/{id}`) — §578: `skip_presets` в GET read-only, PATCH не принимает |
 | `/folders/{id}/members/{idx}` | DELETE | — |
 | `/folders/{id}/members/reorder` | POST | `{"order":[старые индексы в новом порядке]}` — полная перестановка |
 | `/folders/{id}/members/{idx}/ungroup` | POST | член → одиночный сервер сразу после папки |
@@ -1517,7 +1537,7 @@ curl -X POST -H "$HDR" -H "Content-Type: application/json" \
   --data-binary @/tmp/lxbox-backup.json \
   "$BASE/backup/import?rebuild=true"
 
-# Merge mode — top-level upsert (vars upsert, остальные ключи overwrite, отсутствующие в файле — keep)
+# Merge mode — слияние §633: добавляется то, чего нет; своё остаётся (счётчики — applied.merge)
 curl -X POST -H "$HDR" -H "Content-Type: application/json" \
   --data-binary @/tmp/lxbox-backup.json \
   "$BASE/backup/import?merge=true"
@@ -1549,7 +1569,7 @@ curl -s -H "$HDR" "$BASE/backup/export?include=storage&from=v0_bak" > /tmp/lxbox
 
 ⚠ Источники в памяти приложения (экран Servers) после `POST /backup/import` не перечитываются до холодного рестарта. Так и в 2.23.2, к §439 не относится.
 
-`merge=false` (default) — replace всего документа (категорий у запроса нет; замена по категориям §599 — только у UI-импорта); `merge=true` — top-level upsert. Кеши (cache.db, stderr.log, SRS-blob, runtime node-tags) в backup не входят — restore их пересоздаёт.
+`merge=false` (default) — replace всего документа (категорий у запроса нет; замена по категориям §599 — только у UI-импорта); `merge=true` — слияние §633, то же, что Merge в UI: списки по идентичности записи (источники по `id`, цепочки / Направления / DNS-серверы по тегу, правила по `ref` пресета, `id` или содержимому; новые — в конец, правила — в конец пользовательской зоны `num`), Tunnel apps — объединение пакетов, режим получателя, если не `off`; скаляры, `vars` и `vpn_settings` — значение получателя, отсутствующий ключ — из файла. Ответ: `applied.merge` = `{sources, rules, directions, dns_servers, dns_rules, tun_apps, keys}` по `{added, kept}`, `applied.vpn_settings_kept`. Кеши (cache.db, stderr.log, SRS-blob, runtime node-tags) в backup не входят — restore их пересоздаёт.
 
 ---
 

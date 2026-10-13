@@ -23,7 +23,7 @@
 
 | Вкладка | Содержимое |
 |---|---|
-| Settings | Protocol, Server (только чтение); Tag с палитрой эмодзи; Detour server с превью пути; Skip presets |
+| Settings | Protocol, Server (только чтение); Tag с палитрой эмодзи; Detour server с превью пути; TLS (узловое переопределение ручек TLS Fragmentation, пишется сразу); Skip presets |
 | Source | текст источника, редактируемый; подпись о виде источника |
 | JSON | тело, которое получит ядро, только чтение, подсветка; Copy JSON; Edit JSON |
 | Network | только у узла Tailscale — устройства tailnet, выбор Exit node |
@@ -50,7 +50,14 @@
 ## Правила и инварианты
 
 - Detour и Skip presets записываются сразу при выборе; Tag и Source — только
-  кнопкой Save в заголовке. Подтверждения при уходе с несохранённым Tag нет.
+  кнопкой Save в заголовке.
+- **Выход с несохранёнными правками.** Правка — поле Tag или текст Source,
+  отличные от сохранённого; вернул как было — правки нет. Back (системный,
+  жест, стрелка AppBar) с правкой показывает общий диалог «Unsaved changes»:
+  Save — то же, что кнопка Save (запись отклонена — пустой Source, узел не
+  принят ядром — экран остаётся открытым с сообщением); Discard — выйти без
+  сохранения; Keep или закрытие диалога — остаться. Правок нет или идёт
+  загрузка — выход без диалога.
 - Save пересохраняет текст Source с тегом из поля Tag: ссылка — во фрагмент,
   JSON — в поле `tag`, INI — в поле записи.
 - Эмодзи в тег при правке не подставляется автоматически; его ставят
@@ -86,3 +93,5 @@
 | 8 | [501](../../../tasks/501-diagnostics-notifications-merge.md) | Released в v2.25.0 | Уведомления внутри Diagnostics |
 | 9 | [578](../../../tasks/578-tailscale-preset-template-for-each.md) | Spec, реализация запущена | Переключатель Skip presets |
 | 10 | [581](../../../tasks/581-tailscale-network-tab.md) | Implemented | Вкладка Network узла Tailscale |
+| 11 | [626](../../../tasks/626-unsaved-changes-everywhere.md) | Implemented | Диалог «Unsaved changes» при выходе с правкой Tag или Source |
+| 12 | [636](../../../tasks/636-tls-settings-per-node-folder-subscription.md) | Implemented | Секция TLS между Detour и Skip presets |

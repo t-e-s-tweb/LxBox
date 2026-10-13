@@ -9,6 +9,7 @@ import '../../models/node_warning.dart';
 import '../../models/parser_config.dart';
 import '../../models/server_list.dart';
 import '../../models/source_chain.dart';
+import '../../models/tls_policy.dart';
 import '../contract/group_genus.dart';
 import '../../models/singbox_entry.dart';
 import '../../models/template_vars.dart';
@@ -268,7 +269,13 @@ Future<BuildResult> _buildConfig({
   // coerce по node.type.
   final byName = <String, WizardVar>{};
   for (final v in template.vars) {
-    final raw = settings.userVars[v.name] ?? v.defaultValue;
+    // §643 (D-132) — `internal`: значение состояния не читается, действует
+    // `default_value`; `unique` у `text_list` — значение без дублей.
+    final raw = applyVarUnique(
+        v,
+        v.isInternal
+            ? v.defaultValue
+            : (settings.userVars[v.name] ?? v.defaultValue));
     // §161 backstop: пустое required-поле с непустым default → default. Ловит
     // источники в обход UI (импорт бэкапа/пресета, legacy-state с пустым
     // значением — напр. стёртый tolerance). ДО _substituteVars, не трогает
@@ -319,8 +326,15 @@ Future<BuildResult> _buildConfig({
         (vpnMode.effectiveAuth && vpnMode.proxyPassword.isNotEmpty)
             ? 'true'
             : 'false';
+    // §629 — системный HTTP-прокси VPN-сети: без TUN объявлять нечего.
+    vars['sys_proxy'] =
+        (vpnMode.systemProxyEnabled && vpnMode.mode != 'proxy')
+            ? 'true'
+            : 'false';
+    vars['sys_proxy_port'] = '${vpnMode.effectiveSystemProxyPort}';
   } else {
     vars['vpn_mode'] = 'vpn'; // degrade к tun-only (иначе пустой inbounds[])
+    vars['sys_proxy'] = 'false';
   }
 
   final resolve = makeResolver(vars, byName);
@@ -634,7 +648,7 @@ Future<BuildResult> _buildConfig({
     ];
   }
 
-  // §578 — узлы для пресетов с `for_each`: состав окончателен (снятия
+  // §578 — узлы для пресетов с обходом узлов: состав окончателен (снятия
   // detour-прохода, гейта реестра и ядра уже применены), теги финальные.
   final presetNodes = _collectPresetNodes(lists, ctx);
 
@@ -843,8 +857,9 @@ Future<BuildResult> _buildConfig({
           .add(w);
     }
   }
-  applyTlsFragment(config, vars);
-  applyMixedCaseSni(config, vars);
+  // §636 — уровни узла и источника поверх глобальных `vars`.
+  applyTlsFragment(config, vars, byTag: ctx.tlsByTag);
+  applyMixedCaseSni(config, vars, byTag: ctx.tlsByTag);
 
   // §419 / §441 — умолчания шаблона резолверов DNS: замены битых ссылок
   // (сервер пресета ушёл — [healDanglingDnsResolvers]; сервер выпал из-за
@@ -1035,7 +1050,7 @@ Future<BuildResult> _buildConfig({
   );
 }
 
-/// §578 — узлы конфига для `for_each` в порядке конфига (`outbounds`, затем
+/// §578 — узлы конфига для обхода узлов в порядке конфига (`outbounds`, затем
 /// `endpoints`). Берутся только записи узлов из источников, у которых есть
 /// финальный тег в `emittedTagByNode`: выключенный, снятый гейтом реестра,
 /// ядра или detour-проходом узел туда не попадает. `skip_presets` — поле
@@ -1198,6 +1213,14 @@ class _BuildCtx implements EmitContext {
 
   /// §435 — строки отчёта из `ServerList.build` (гейт ядра).
   final warnings = <String>[];
+
+  /// §636 — итоговый тег → уровни TLS-политики (узел, источник).
+  final tlsByTag = <String, TlsLayers>{};
+
+  @override
+  void noteTls(String finalTag, TlsLayers layers) {
+    if (!layers.isEmpty) tlsByTag[finalTag] = layers;
+  }
 
   @override
   TemplateVars get vars => _vars;

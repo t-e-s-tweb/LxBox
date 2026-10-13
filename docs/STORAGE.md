@@ -395,6 +395,8 @@ For test benches: `GET /backup/export?include=storage&from=v0_bak` returns `.v0.
 
 A flat `Map<String, String>` (values are stringified on read). It serves both **template substitution** (any `@name` in `wizard_template.json` is filled in from here) and app feature flags — the two live in the same map.
 
+§643 (contract 1.1.119, D-132): a template var with `wizard_ui: "internal"` is never stored — neither here nor in a preset rule's `vars`; the writer drops the key silently and the build ignores a stored value (the base is `default_value`). A `text_list` var with `unique: true` is stored without duplicate lines.
+
 ### Known keys
 
 | Key | Default | Spec | What it does |
@@ -442,6 +444,8 @@ A flat `Map<String, String>` (values are stringified on read). It serves both **
 > The authoritative list of app flags in code is `SettingsStorage._appFeatureFlagVars`; keep this table in sync with it.
 
 A full replace (`replaceRaw` with `merge=false`: backup restore in Replace mode, `POST /backup/import`) keeps some device keys from the current storage when the incoming `vars` lack them: `debug_enabled` / `debug_token` / `debug_port` (§413, `SettingsStorage.debugApiVarKeys`) and the one-shot startup prompt flags `wizard_battery_v1`, `wizard_addtile_v1`, `wizard_update_check_v1`, `notif_perm_prompted_v1` (§447, `SettingsStorage.startupPromptVarKeys`). None of the four startup prompt flags is in the import allowlist, so a file never brings them; import (both modes) skips them silently instead of reporting them as unknown keys (§600), while export still writes them.
+
+A merge (`replaceRaw` with `merge=true`: backup restore in Merge mode, `POST /backup/import?merge=true`) adds what the receiver lacks and keeps what it has (§633, `lib/services/backup_merge.dart`): `vars` and every other scalar key keep the receiver's value, a key the receiver lacks comes from the file; `rules`, `directions`, `dns.servers`, `dns.rules` and `sources` are merged by record identity (preset rule — `ref`; other rules and DNS rules — `id` or content; directions, DNS servers, chains — tag; other sources — `id`), new records are appended, new user rules get `num` past the receiver's last user rule; a preset rule is on when it is on on either side; `tun_apps` joins the packages and keeps the receiver's mode unless it is `off`. A record whose tag is taken by a receiver's chain or direction is skipped.
 
 `removeVar(k)` is not the same as `setVar(k, '')` — an empty string can be a legitimate value, while an absent key falls back to the default.
 
@@ -673,15 +677,16 @@ change. The node's body, tag and identity stay as they were. Only a bare body
 goes to the core verbatim (the §455 build mode above).
 
 **`skip_presets` (§578).** A record field of a server and of a folder member:
-the node is not served by presets with `for_each` whose `filter` reads the
-field (the shipped `tailscale` preset does). Only `true` is written; a missing
+the node is not served by presets with a node loop (`for_each_node` /
+`for_each_node_do`, §643) whose `#filter` reads the field (the shipped
+`tailscale` preset does). Only `true` is written; a missing
 field means the node is served. The field travels in a backup: on import a node
 matched by its body takes `true` from the file, and a missing field does not
 reset the local value (only `true` is stored, so absence cannot be told from
 `false`). A subscription node has no record and is always served. The UI is the
-**Skip presets** switch on the node screen, shown when the template has a
-`for_each` preset for the node's type; the Debug API returns the field in the
-node record.
+**Skip presets** switch on the node screen, shown when the `#filter` of some
+loop preset in the template accepts the node with `skip_presets = false`; the
+Debug API returns the field in the node record.
 
 #### Node sections — removed (§575)
 
@@ -1084,7 +1089,7 @@ the model's own words (`inline`, `rule`, `presetId`, `varValues`) and a dead `ru
 ```
 
 - `template` — a reference to a server from the template ([§117]: a `{vars, server}` wrapper, with the tag in `server.tag`). The user can override `enabled` and `description` and choose var values (`vars`: the `outbound` direction, the IP profile, the domain resolver — see TEMPLATE.md); the body is resolved from the template by substituting the `@var`s (`resolveTemplateDnsServerBody`).
-- `preset` — a server declared by a template preset. The identity is `ref` = `<preset_id>:<tag inside the preset>`, split on the first `:`; a server of a `for_each` preset (§578) is the exception: its tag is not namespaced (`<node tag>-dns`), so `ref` is the bare tag and no preset id is stored — the DNS screen takes the owner from the expanded preset body; that string is also the server's config tag (the builder namespaces preset tags, `namespacePresetTags`) and the model's `tag`, so `ref` and tag are one string. Auto-discovery fills the preset id when the server is added; a `ref` without `:` (the preset was not found) is the tag, and orphan cleanup follows. A repeated namespace written by early 2.23.3 builds (`ru-direct:ru-direct:dns_ru`) is read as `ru-direct:dns_ru` and never written.
+- `preset` — a server declared by a template preset. The identity is `ref` = `<preset_id>:<tag inside the preset>`, split on the first `:`; a server of a `for_each_node` preset (§578, §643) is the exception: its tag is not namespaced (`<node tag>-dns`), so `ref` is the bare tag and no preset id is stored — the DNS screen takes the owner from the expanded preset body; that string is also the server's config tag (the builder namespaces preset tags, `namespacePresetTags`) and the model's `tag`, so `ref` and tag are one string. Auto-discovery fills the preset id when the server is added; a `ref` without `:` (the preset was not found) is the tag, and orphan cleanup follows. A repeated namespace written by early 2.23.3 builds (`ru-direct:ru-direct:dns_ru`) is read as `ru-direct:dns_ru` and never written.
 - `user` — a user-defined server (the model's `inline`). `body` is required.
 
 The tag lives **only** at the record level; the builder synthesizes `body.tag` back when assembling the config. **Render order in the UI:** `template` → `preset` → `user`.
@@ -1513,8 +1518,9 @@ After the migration the set of directions lives in `directions[]` and is edited 
   (`migrateStorageDoc`): on the file in `_load()` and on the import boundaries (internal
   backup, Debug API `/backup/import`) before `replaceRaw`, `channels` /
   `channels_migrated` become `directions` / `directions_migrated` when the new names are
-  absent (the new name wins; a legacy pair next to a list sets the guard). The merge-upsert
-  then collides on the single `directions` name and the archive wins over live data. The
+  absent (the new name wins; a legacy pair next to a list sets the guard). A merge then
+  works on the single `directions` name: live directions stay, the archive's new tags
+  are appended (§633; before it the archive replaced the live list). The
   legacy pair is **not** in any allowlist. `migrateDirectionsIfNeeded` has three
   branches: `directions` present → no-op; `directions_migrated == true` with no list →
   migrated-and-empty, stamp the marker but do **not** re-seed; otherwise → seed from the

@@ -412,6 +412,16 @@
         "id": "yandex",
         "name": "Yandex",
         "url": "https://ya.ru/"
+      },
+      {
+        "id": "youtube",
+        "name": "YouTube",
+        "url": "https://www.youtube.com/generate_204"
+      },
+      {
+        "id": "youtube-ytimg",
+        "name": "YouTube (ytimg)",
+        "url": "https://i.ytimg.com/generate_204"
       }
     ]
   },
@@ -429,6 +439,9 @@
         "id": "hostkey-moscow",
         "name": "Hostkey (Moscow)",
         "download_url": "https://spd-rudp.hostkey.ru/files/10mb.bin",
+        "upload_url": "https://spd-rudp.hostkey.ru/empty",
+        "upload_method": "POST",
+        "upload_chunk_bytes": 1000000,
         "ping_url": "https://spd-rudp.hostkey.ru/"
       },
       {
@@ -441,6 +454,9 @@
         "id": "hostkey-frankfurt",
         "name": "Hostkey (Frankfurt)",
         "download_url": "https://spd-desrv.hostkey.com/files/10mb.bin",
+        "upload_url": "https://spd-desrv.hostkey.com/empty",
+        "upload_method": "POST",
+        "upload_chunk_bytes": 1000000,
         "ping_url": "https://spd-desrv.hostkey.com/"
       },
       {
@@ -453,12 +469,18 @@
         "id": "hostkey-helsinki",
         "name": "Hostkey (Helsinki)",
         "download_url": "https://spd-fisrv.hostkey.com/files/10mb.bin",
+        "upload_url": "https://spd-fisrv.hostkey.com/empty",
+        "upload_method": "POST",
+        "upload_chunk_bytes": 1000000,
         "ping_url": "https://spd-fisrv.hostkey.com/"
       },
       {
         "id": "hostkey-new-york",
         "name": "Hostkey (New York)",
         "download_url": "https://spd-uswb.hostkey.com/files/10mb.bin",
+        "upload_url": "https://spd-uswb.hostkey.com/empty",
+        "upload_method": "POST",
+        "upload_chunk_bytes": 1000000,
         "ping_url": "https://spd-uswb.hostkey.com/"
       },
       {
@@ -666,7 +688,9 @@
           "options": [
             "https://cp.cloudflare.com/generate_204",
             "https://www.gstatic.com/generate_204",
-            "https://captive.apple.com/hotspot-detect.html"
+            "https://captive.apple.com/hotspot-detect.html",
+            "https://www.youtube.com/generate_204",
+            "https://i.ytimg.com/generate_204"
           ]
         },
         {
@@ -763,6 +787,15 @@
           "wizard_ui": "fix",
           "title": "Serve stale answers",
           "tooltip": "Answer from cache at once and refresh in the background."
+        },
+        {
+          "name": "dns_resolver_no_stale",
+          "type": "bool",
+          "default_value": "true",
+          "required": true,
+          "wizard_ui": "fix",
+          "title": "Never serve stale answers for node hostnames",
+          "tooltip": "Hostnames the core resolves itself (node servers) are looked up again once the cached answer expires, so a node whose address changed does not stay on the old one. App DNS queries are not affected."
         },
         {
           "name": "dns_store_cache",
@@ -997,6 +1030,24 @@
           "wizard_ui": "hidden",
           "title": "Require auth",
           "tooltip": "Whether the local proxy requires username/password. Forced on for non-loopback listen."
+        },
+        {
+          "name": "sys_proxy",
+          "type": "bool",
+          "default_value": "false",
+          "required": true,
+          "wizard_ui": "hidden",
+          "title": "System HTTP proxy",
+          "tooltip": "Announce a local HTTP proxy to the VPN network (Android 10+)."
+        },
+        {
+          "name": "sys_proxy_port",
+          "type": "int",
+          "default_value": "2081",
+          "required": true,
+          "wizard_ui": "hidden",
+          "title": "System proxy port",
+          "tooltip": "Loopback port of the system HTTP proxy inbound."
         }
       ]
     },
@@ -1004,7 +1055,7 @@
       "id": "dpi-bypass",
       "name": "TLS Fragmentation",
       "chapter": "core",
-      "description": "Splits the TLS handshake so it carries no single-packet signature",
+      "description": "Splits the TLS handshake so it carries no single-packet signature. Default for all servers; override per server, folder or subscription.",
       "vars": [
         {
           "name": "tls_fragment",
@@ -1105,7 +1156,21 @@
             "mtu": "@tun_mtu",
             "auto_route": "@tun_auto_route",
             "strict_route": "@tun_strict_route",
-            "stack": "@tun_stack"
+            "stack": "@tun_stack",
+            "#if sys_proxy": {
+              "#and": [
+                "@sys_proxy"
+              ],
+              "#value": {
+                "platform": {
+                  "http_proxy": {
+                    "enabled": true,
+                    "server": "127.0.0.1",
+                    "server_port": "@sys_proxy_port"
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -1141,6 +1206,19 @@
             }
           }
         }
+      },
+      {
+        "#if": {
+          "#and": [
+            "@sys_proxy"
+          ],
+          "#value": {
+            "type": "http",
+            "tag": "sysproxy-in",
+            "listen": "127.0.0.1",
+            "listen_port": "@sys_proxy_port"
+          }
+        }
       }
     ],
     "endpoints": [],
@@ -1157,7 +1235,10 @@
     ],
     "route": {
       "find_process": true,
-      "default_domain_resolver": "@dns_default_domain_resolver",
+      "default_domain_resolver": {
+        "server": "@dns_default_domain_resolver",
+        "disable_optimistic_cache": "@dns_resolver_no_stale"
+      },
       "rules": [],
       "final": "vpn-1",
       "auto_detect_interface": "@auto_detect_interface"
@@ -1805,11 +1886,16 @@
     },
     {
       "preset_id": "tailscale",
-      "for_each": {
-        "node_type": "tailscale",
-        "as": "node",
-        "filter": {
-          "#not": "@node.skip_presets"
+      "for_each_node": {
+        "#filter": {
+          "#and": [
+            {
+              "@node.body.type": "tailscale"
+            },
+            {
+              "#not": "@node.skip_presets"
+            }
+          ]
         }
       },
       "ui": {
@@ -1916,8 +2002,8 @@
       "preset_id": "unknown-traffic",
       "ui": {
         "label": "Unknown traffic",
-        "description": "Reject traffic in the tunnel not attributed to any installed app (background/foreign processes). Send it direct to bypass VPN instead.",
-        "default": false,
+        "description": "Traffic in the tunnel not attributed to any installed app (background/foreign processes) goes direct, bypassing the VPN, so a process that binds to the tunnel cannot learn the server address. Pick Reject to drop it instead.",
+        "default": true,
         "num": 1150,
         "isSortable": true
       },
@@ -1925,10 +2011,10 @@
         {
           "name": "outbound",
           "type": "outbound",
-          "default_value": "reject",
+          "default_value": "direct-out",
           "required": true,
           "title": "outbound",
-          "tooltip": "Reject = drop. Or pick Direct to send it outside the VPN."
+          "tooltip": "Direct = send it outside the VPN. Or pick Reject to drop it (strict mode: any attribution failure means no network)."
         }
       ],
       "rule_set": [
@@ -1944,6 +2030,9 @@
         }
       ],
       "rule": {
+        "inbound": [
+          "tun-in"
+        ],
         "rule_set": [
           "unknown-apps"
         ],

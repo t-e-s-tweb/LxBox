@@ -56,7 +56,7 @@ class CustomRuleEditController extends ChangeNotifier {
     _init();
   }
 
-  /// §578 — узлы для превью пресета с `for_each` в View-табе.
+  /// §578 — узлы для превью пресета с обходом узлов в View-табе.
   final List<PresetNode> presetNodes;
 
   /// Исходное правило (до open editor'а). На save сравнивается со
@@ -118,6 +118,10 @@ class CustomRuleEditController extends ChangeNotifier {
   /// Читается async в `_init` через [SettingsStorage.getVpnMode].
   bool _hasMixedInbound = false;
 
+  /// §629 — есть ли `sysproxy-in` (системный HTTP-прокси VPN-сети): тумблер
+  /// включён и есть TUN. Тот же источник, что [_hasMixedInbound].
+  bool _hasSystemProxy = false;
+
   /// §264 — глобальные vars для превью пресета в View-табе (expandPreset
   /// globalVars): `@vpn_mode`/`@resolve_strategy` в правилах пресета
   /// (traffic-processing) резолвятся из глобали, иначе `#if @vpn_mode` не
@@ -160,6 +164,8 @@ class CustomRuleEditController extends ChangeNotifier {
   List<({String tag, String label})> get inboundChoices => [
         (tag: 'tun-in', label: 'TUN — system interface'),
         if (_hasMixedInbound) (tag: 'mixed-in', label: 'Proxy interface'),
+        if (_hasSystemProxy)
+          (tag: 'sysproxy-in', label: 'System proxy interface'),
       ];
 
   CustomRuleKind get kind => _kind;
@@ -343,6 +349,7 @@ class CustomRuleEditController extends ChangeNotifier {
     final template = await TemplateLoader.load();
     if (_disposed) return;
     _hasMixedInbound = cfg.hasMixed;
+    _hasSystemProxy = cfg.systemProxyEnabled && cfg.hasTun;
 
     // §265 — резолвим ref-vars пресета: для каждой `{"ref": name}` берём
     // определение глобали из template + значение (userVars или её default).
@@ -558,11 +565,19 @@ class CustomRuleEditController extends ChangeNotifier {
         break;
       }
     }
+    // §643 (D-132) — `unique` у `text_list`: дубли снимаются при сохранении;
+    // `internal` в запись не пишется.
     final stored = recordVarValueToStore(
       val,
       decl == null
           ? null
-          : RecordVarDecl(name: decl.name, defaultValue: decl.defaultValue),
+          : RecordVarDecl(
+              name: decl.name,
+              defaultValue: decl.defaultValue,
+              type: decl.type,
+              isInternal: decl.isInternal,
+              unique: decl.unique,
+            ),
     );
     if (stored == null) {
       _varsValues.remove(name);

@@ -42,24 +42,17 @@ class _InlineBodyEditor extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(
           12, 12, 12, MediaQuery.of(context).padding.bottom + 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            c.isNew ? getLocalText.s("sing-box server JSON — tag editable here or in Params; description/enabled live on the list entry") : getLocalText.s("sing-box server JSON — tag locked while editing; description/enabled live on the list entry"),
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 6),
-          // §614 — редактор JSON с подсветкой, свёрткой и поиском.
-          Expanded(
-            child: LxTextCodeField(
-              controller: c.bodyCtrl,
-              errorText: c.jsonError,
-              onChanged: c.onBodyTextChanged,
-            ),
-          ),
-        ],
+      // §614/§624 — редактор JSON с подсветкой и поиском; подпись — слева
+      // в строке кнопок поля (поиск, Format).
+      child: LxTextCodeField(
+        controller: c.bodyCtrl,
+        errorText: c.jsonError,
+        onChanged: c.onBodyTextChanged,
+        header: Text(
+          c.isNew ? getLocalText.s("sing-box server JSON — tag editable here or in Params; description/enabled live on the list entry") : getLocalText.s("sing-box server JSON — tag locked while editing; description/enabled live on the list entry"),
+          style: theme.textTheme.labelSmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
       ),
     );
   }
@@ -104,59 +97,25 @@ class _ReadOnlyPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ─── Storage shape ───
-          Row(
-            children: [
-              Expanded(
-                child: Text(getLocalText.s("storage shape (lxbox_settings.json)"),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
-              ),
-              _CopyButton(text: storageJson),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            constraints: const BoxConstraints(maxHeight: 180),
-            child: SingleChildScrollView(
-              child: SelectableText(
-                storageJson,
-                style:
-                    const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
-            ),
+          // Подпись и Copy — в строке над рамкой просмотрщика; JSON с
+          // подсветкой, как у остальных JSON-полей (§624).
+          LxJsonView(
+            text: storageJson,
+            height: 180,
+            header: Text(getLocalText.s("storage shape (lxbox_settings.json)"),
+                style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant)),
+            actions: [_CopyButton(text: storageJson)],
           ),
           const SizedBox(height: 12),
           // ─── Resolved sing-box body ───
-          Row(
-            children: [
-              Expanded(
-                child: Text(getLocalText.s("sing-box server preview (read-only)"),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
-              ),
-              _CopyButton(text: resolvedJson),
-            ],
-          ),
-          const SizedBox(height: 4),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  resolvedJson,
-                  style: const TextStyle(
-                      fontFamily: 'monospace', fontSize: 12),
-                ),
-              ),
+            child: LxJsonView(
+              text: resolvedJson,
+              header: Text(getLocalText.s("sing-box server preview (read-only)"),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant)),
+              actions: [_CopyButton(text: resolvedJson)],
             ),
           ),
         ],
