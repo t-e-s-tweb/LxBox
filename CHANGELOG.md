@@ -6,6 +6,83 @@
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Вкладка Source: `base64:`-заголовки показаны расшифрованными
+  ([§650](docs/spec/tasks/650-source-headers-base64-toggle.md)).** В блоке
+  Response headers значение `base64:…` (например, `profile-title`, `announce`)
+  выводится в UTF-8; подпись `base64` под именем заголовка переключает строку
+  на исходное значение и обратно. Копирование блока — как прежде, в исходном
+  виде.
+- **Описание подписки из заголовка `announce`
+  ([§648](docs/spec/tasks/648-subscription-announce.md)).** Текст провайдера
+  (`base64:…` или открытый; запасной путь — ключ в комментариях в начале тела)
+  показывается в шапке подписки под строкой «Expires»: до 4 строк, тап
+  раскрывает целиком. На вкладке Source заголовок попадает в список важных.
+- **Префикс тегов новой подписки берётся из эмодзи её названия
+  ([§647](docs/spec/tasks/647-subscription-emoji-tag-prefix.md)).** Когда
+  подписка впервые получает имя (`profile-title`, `Content-Disposition`, имя
+  файла), а префикс пустой, префиксом становится группа эмодзи из имени:
+  `Liberty VPN 🗽` → `🗽`. Занятый префикс получает индекс: `🗽2`. Существующие
+  подписки не меняются.
+
+### Removed
+
+- **Переключатель «Allow LAN access while using exit node» на вкладке Network
+  узла Tailscale убран
+  ([§646](docs/spec/tasks/646-tailscale-remove-lan-access-switch.md)).** Ядро на
+  Android поле `exit_node_allow_lan_access` не применяет; локальную сеть при
+  выходном узле ведёт direct пресет «Private IPs». Поле по-прежнему
+  принимается из JSON.
+
+---
+
+## [2.25.15] — 2026-10-14
+
+### Changed
+
+- **Tailscale Network tab shows how each device is reached
+  ([task 645](docs/spec/tasks/645-tailscale-devices-path-addresses.md)).**
+  A third line per device: green bolt and `direct <ip:port>`, orange cloud and
+  `relay <region>` (DERP), orange hub and `peer relay`; offline devices show
+  `last seen 33h ago` and `key expired`. The exit node shows its path with the
+  same icon. Rows are shorter: name and first address, then OS and roles with
+  the second address; more than two addresses fold into `+N`. MagicDNS name
+  and every address moved into the device menu; the header counts
+  `N online / M`. This device lists its addresses under one Address heading.
+  While the tab is open and the VPN is on it calls the core's one-shot
+  `GetTailscaleStatus` every 3 s. (RU: Вкладка Network узла Tailscale
+  показывает путь до каждого устройства — direct / relay / peer relay с
+  иконкой; строки короче, адреса столбиком с `+N`, MagicDNS и адреса в меню,
+  счётчик в заголовке; вкладка обновляется раз в 3 с, пока открыта.)
+
+### Fixed
+
+- **The Tailscale connection path never appeared (task 645).** The core reports
+  the path in lower case (`direct`, `peer_relay`, `derp`); since v2.25.11 the
+  app compared it with upper case and the path line stayed empty. Parsing is
+  now case-insensitive. (RU: Путь соединения Tailscale не показывался с
+  v2.25.11: ядро отдаёт его строчными, приложение сравнивало с заглавными.
+  Теперь регистр не важен.)
+
+- **Default routing presets are on right after install
+  ([task 644](docs/spec/tasks/644-default-presets-seed-before-routing.md)).**
+  Presets the template enables by default (Russia-only services, BitTorrent,
+  Tailscale networks, Unknown traffic, VoWiFi) reached the config only after
+  the Routing screen was opened once: a node added and connected before that
+  ran without them. They are now seeded at app start and before the config
+  is built, once per install; a preset the user removed does not come back.
+  (RU: Пресеты, включённые в шаблоне по умолчанию (Russia-only services,
+  BitTorrent, Tailscale networks, Unknown traffic, VoWiFi), попадали в конфиг
+  только после первого открытия экрана Routing: узел, добавленный и
+  подключённый до этого, шёл без них. Теперь они засеваются при старте
+  приложения и перед сборкой конфига, один раз на установку; удалённый
+  пресет не возвращается.)
+
+---
+
 ## [2.25.14] — 2026-10-13
 
 ### Added

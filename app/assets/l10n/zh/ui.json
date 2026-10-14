@@ -2134,6 +2134,12 @@
   "Find": {
     "value": "查找"
   },
+  "Wrap lines": {
+    "value": "自动换行"
+  },
+  "Unwrap lines": {
+    "value": "取消自动换行"
+  },
   "Imported: %s": {
     "value": "已导入：%s"
   },
@@ -5583,11 +5589,29 @@
   "Save choice": {
     "value": "保存选择"
   },
-  "online": {
-    "value": "在线"
+  "last seen %s ago": {
+    "value": "%s前在线"
   },
-  "last seen %s": {
-    "value": "最后在线 %s"
+  "%ss": {
+    "value": "%s 秒"
+  },
+  "%sm": {
+    "value": "%s 分钟"
+  },
+  "%sh": {
+    "value": "%s 小时"
+  },
+  "%sd": {
+    "value": "%s 天"
+  },
+  "%s online / %s": {
+    "value": "%s 在线 / 共 %s"
+  },
+  "Copy MagicDNS name": {
+    "value": "复制 MagicDNS 名称"
+  },
+  "Copy %s": {
+    "value": "复制 %s"
   },
   "key expired": {
     "value": "密钥已过期"
@@ -5739,14 +5763,8 @@
   "Advertise this device as exit node": {
     "value": "将此设备公布为出口节点"
   },
-  "Allow LAN access while using exit node": {
-    "value": "使用出口节点时允许访问局域网"
-  },
   "Not available while an exit node is used.": {
     "value": "使用出口节点时不可用。"
-  },
-  "Needs a saved exit node.": {
-    "value": "需要已保存的出口节点。"
   },
   "Route depends on your rules, shown after the test": {
     "value": "路由由您的规则决定，测试后显示"
