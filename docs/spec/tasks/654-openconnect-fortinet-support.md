@@ -3,7 +3,7 @@
 | Поле | Значение |
 |------|----------|
 | Тип | F (новая возможность: протокол `openconnect`) |
-| Статус | In progress |
+| Статус | Done (A, A2, B, B2, C влиты 15.10.2026, CI 38767295959 зелёный на 513b858d; туннель FortiGate на эмуляторе поднимается; живой второй фактор и SAML — у владельца) |
 | Дата | 2026-10-15 |
 | Связанные | §653 (синк 1.1.121; 1.1.120 = `openconnect` известен как endpoint), §579/§581/§645 (подписка статуса Tailscale через libbox — образец канала), §586 (`fields_unchecked`), §577 (авторское тело), §478 (автоснятие узла) |
 | Контракт | 1.1.122, `TASKS_LXBOX.md` §119 лаунчера; синк на коммит лаунчера `0ca7b7c5` |
@@ -134,6 +134,92 @@ sing-box JSON доезжает до ядра, но:
 лаунчеру (сессия «OpenConnect Fortinet configuration»), не править корпус
 у себя.
 
+**Волна A — выполнено (15.10.2026).** Контракт синкнут на `0ca7b7c5`
+(1.1.122). Что сделано и где:
+
+- Wildcard: `ContractRegistry` не кладёт `*` в разобранные карты полей
+  (`FieldSchema.fields`, `BodySchema.fields`), в `order` он остаётся слотом;
+  признак — `hasWildcard`. Все обходы по `fields` его не видят по
+  построению. Санитайзер (`sanitizeObject`): при `*` в `order` объекта
+  неописанные ключи копируются (глубокая копия, во входящем порядке) и
+  кладутся в снимок для связей. Эмиттера тела по `order` реестра в LxBox
+  нет (санитайзер сохраняет входящий порядок, корпус сравнивает тела по
+  отсортированным ключам), так что слот `*` в эмиссии не используется.
+- `fields_unchecked` снят; `isUncheckedType` заменён на
+  `ContractRegistry.knowsType` (есть схема у типа). Узел типа без своей
+  модели (`openvpn-client`, `openconnect`) — `UnknownTypeSpec` с ОЧИЩЕННЫМ
+  телом; коды и снятие записи — проход по дословной карте
+  (`annotateFromRawBody`, раньше `UnknownTypeSpec` он пропускал).
+- Адрес: `UnknownTypeSpec` адрес в тело не дописывает вовсе;
+  `ContractRegistry.describesRootField(type, name)` — для мест, которые
+  будут дописывать.
+- Роль `variant`: `variantLabelByRegistry` (`protocol_level.dart`),
+  `_deriveTransport` — `vhttp` → `transport` → `variant` → `tcp`.
+- Модель формы: `lib/services/contract/registry_form.dart` —
+  `formLayoutFor(scheme)` → `FormLayout` (`blocks`, `fieldsIn(block)`,
+  `choicesIn(block)`, `field(path)`, `choice(id)`, `stateOf(body)`),
+  `FormState` (`visible`, `required`, `missing`, `choices`, `outOfRange`,
+  `isVisible/isRequired/isMissing/outOfRangeAt`, `canSave`),
+  `activeFormOption`, `applyFormOption`, `withFormValue` (пустое снимает
+  ключ и опустевший объект), `formValueAt`, `formPathSet`,
+  `formAdvisoryCodes`, `formRequired`.
+- Четыре кода: тексты EN/RU — данные `warnings.json` (синк); своих строк
+  приложение для кодов реестра не держит, ZH падает в EN
+  (`registry_warning.dart`) — l10n-файлы не менялись.
+- Попутно по норме лаунчера: объект, который санитайзер опустошил (связь
+  сняла единственное поле), в тело не идёт (кейс
+  `openconnect_client_cert_without_key`); код снятия записи в `dropped[]`
+  берётся из `dropFrom` санитайзера, когда он не `error`
+  (`openconnect_flavor_invalid` — warning).
+- Тесты: `test/contract/form_corpus_test.dart` (раннер `corpus/form`),
+  `registry_form_test.dart`, `registry_wildcard_test.dart`, кейс variant в
+  `test/models/config_node_test.dart`.
+
+### A2. Контракт 1.1.123–1.1.124
+
+Норма — `TASKS_LXBOX.md` §120 (1.1.123) и §121 (1.1.124) лаунчера,
+`PARSING_PRINCIPLES.md` §6.4. Синк на `0e88c814` (1.1.124).
+
+- **§121 — пустой описанный объект снимается.** `_sanitizeObjectField`:
+  объект с `fields`, пустой после обхода, в тело не идёт без кода — и
+  опустошённый правилами, и `{}` во входе (`tls.ech: {}`).
+  `_sanitizeVariantObject`: без дискриминатора (`transport: {}`) —
+  `field_missing@transport.type`, объект снят, узел живёт. Сквозной ключ под
+  `*` копируется как есть, `{}` в том числе (`openvpn-client` `tls: {}`).
+  Авторское тело (§577) `{}` сохраняет: правило мягкое, точка правки
+  (`settleSanitized`) переносит только жёсткие пути; `field_missing` идёт с
+  `applied: false`. Корпус: `empty_described_object_dropped`,
+  `openvpn_client_empty_tls_kept`.
+- **§120 — модель формы** (`registry_form.dart`, обход по образцу `formWalk`
+  лаунчера): общая секция входит только через `form` ref-поля
+  (`_mergeRefAttrs` переносит `form`, `{}` тоже), поле с `forbidden_for`/
+  `allowed_for` схемы отпадает с поддеревом, `exclude_fields`; блок поля
+  секции без своего — блок ref-поля; вариантная секция — синтетический
+  дискриминатор (`FormFieldSpec.discriminator`, `enum` из `""` и вариантов
+  без `exclude_variants`, порядок — `values` секции,
+  `FieldSchema.variantValues`) и поля всех вариантов (`variant`,
+  `variantOf`), `stateOf` берёт вариант по текущему дискриминатору;
+  `FormLayout.fixed` накладывается перед вычислением, путь не рисуется;
+  `formBodyForSave` его пишет; массив объектов с `form` — элемент `[0]`,
+  числовой сегмент в `formValueAt`/`withFormValue` (дополнение массива,
+  снятие единственного пустого элемента); `activeFormOption` — самое длинное
+  совпадение; `FormLayout.write` — значение + `form.implies`. Поля групп
+  выбора помечены `choiceId`, `block` у них `null` (как раньше). «Задан» —
+  не `null` и не строка из пробелов.
+- **п. 7 — `headers` ws/httpupgrade:** `Host` описан, прочие заголовки идут
+  через `*` без `unknown_key` — работало с волны A (`hasWildcard` читает
+  сырые `fields` варианта), закреплено тестом.
+- **п. 11 — тело формы не авторское.** Узел из формы Add server — свой
+  сервер с телом `singbox_outbound`, то есть авторский: мягкие правила на нём
+  не работали бы. `formBodyForSave(scheme, entry)` — `fixed` + санитайзер со
+  входом `other`; экран OpenConnect сохраняет его результат. Вставка JSON
+  руками — без изменений.
+- Тесты: `form_corpus_test.dart` (все 9 файлов `corpus/form`, кейсы
+  `write` → `expect.body`), `registry_form_test.dart` (группа «контракт
+  1.1.123»), `registry_wildcard_test.dart` (headers, `{}`, авторское тело),
+  `openconnect_form_entry_test.dart` (сохранение через `formBodyForSave`).
+  Новых форм UI для других протоколов нет.
+
 ### B. Форма «Add server → OpenConnect» и правка узла
 
 Макет и правила — SPEC 167 §2.3 лаунчера, три блока:
@@ -172,7 +258,106 @@ sing-box JSON доезжает до ядра, но:
 - JSON-вставка (`_buildJsonPaste`) после волны A принимает узел
   `openconnect` без правок — проверить кейсом из «Фактов».
 
+**Волна B — выполнено (15.10.2026).**
+
+- Вкладка **OpenConnect** в Add server (`add_server_wizard_screen.dart`,
+  последняя, индексы прежних вкладок не сдвинуты): Tag как у соседних форм
+  (необязателен, по умолчанию `openconnect`, эмодзи-пикер), дальше блоки
+  `form.blocks` реестра — первый без заголовка, Security раскрыт, Advanced
+  свёрнут. Поля и порядок — `fieldsIn(block)`, видимость/обязательность/
+  диапазон — `stateOf(body)`, группа сертификата — `choicesIn(block)`.
+  Экран держит только подписи: поле формы реестра без подписи экрана не
+  рисуется (`token.*`, `tls.*_path`, `client_key_password` — вне формы).
+  Gateway по умолчанию `fortinet`. Булево пишется только `true`.
+  Предупреждения — `formAdvisoryCodes` + `registryTitle` (тексты реестра).
+- Сохранение: `{type, tag, …тело формы}` JSON-текстом в
+  `addFromInput(origin: manual)` — ровно путь вставки sing-box JSON
+  (разбор своего тела, санитайзер, `endpoints[]` по `kind`). Сохранение
+  не идёт, пока у показанных полей есть `missing`/`outOfRange`.
+- Правка узла: у socks/http/Tailscale правка полей только через Source
+  (JSON), форм правки нет — OpenConnect так же, формой не дублируется.
+- В `registry_form.dart` добавлены `formInputValue` (текст → значение:
+  пусто → `null`, `int` → число, секрет не обрезается) и `formListInput`
+  (через запятую → список).
+- Тест `test/contract/openconnect_form_entry_test.dart`: форма собирает
+  эталон из «Фактов», пустое ключ не пишет, видимость по flavor, варианты
+  сертификата, правка не теряет `token`/`cookie`/`detour`/`tls.client_*`,
+  сохранение формой = вставка эталона (оба — `Endpoint`, тела равны, без
+  `server_port`).
+- Эмулятор (добавить узел формой, сверить тело в Debug API) не гонялся.
+
+### B2. Форма OpenConnect на вкладке Source правки узла
+
+Решение владельца 15.10.2026 (после первой проверки на эмуляторе: «где же
+все настройки?», «сверху должна быть форма настройки на этой вкладке»).
+Отменяет пункт B «правка узла — как у соседей, только через Source».
+
+- В экране узла (`node_settings_screen.dart`) на вкладке **Source** у узла
+  `openconnect` **над** редактором JSON — та же форма, что во вкладке
+  OpenConnect в Add server: те же три блока, поля, подписи, подсказки,
+  видимость, варианты сертификата, предупреждения. Код формы один на оба
+  экрана (вынести общий виджет), не копия.
+- Форма и JSON — одно тело: правка поля формы переписывает текст источника
+  (через `withFormValue`/`applyFormOption`, прочие ключи — `token`,
+  `cookie`, `detour`, `tls.client_*`, сквозные — не трогаются); правка JSON
+  руками обновляет форму. Источник истины — текст `_sourceCtrl`, как у
+  секции маскировки AWG.
+- Пока текст источника не разбирается как JSON-объект — форма неактивна с
+  одной строкой пояснения, JSON-редактор работает как раньше.
+- Сохранение — существующая кнопка Save в шапке экрана, своих кнопок у
+  формы нет. Tag правится там же, где сейчас (Settings), в форму не
+  дублируется.
+- Остальные протоколы — без изменений.
+
+**Волна B2 — выполнено (15.10.2026).**
+
+- Форма вынесена в общий виджет `OpenConnectForm`
+  (`app/lib/widgets/openconnect_form.dart`): блоки, поля, подписи,
+  подсказки, варианты сертификата, предупреждения; тело — у владельца,
+  правка поля отдаёт новое тело. Визард держит Tag и `_ocBody`, поведение
+  прежнее (`openConnectFieldShown` — для проверки перед сохранением).
+- Экран узла: у узла `openconnect` форма над редактором Source в
+  `ListenableBuilder(_sourceCtrl)`. Текст ↔ тело —
+  `app/lib/services/contract/form_source_sync.dart`: `formBodyFromSource`
+  (объект JSON, не документ с `outbounds`/`endpoints`; иначе `null` —
+  форма неактивна, строка «The form is off: Source is not a valid JSON
+  object.», показано последнее разобранное тело), `sourceWithFormBody`
+  (однострочный текст — компактно, многострочный — с его отступом; порядок
+  ключей прежний, новые в конец; `type`/`tag` из прежнего текста).
+  Контроллеры полей формы не пересоздаются: текст поля меняется, только
+  если тело пришло извне (не эхо последней правки формы) и значение поля
+  с ним разошлось. `Required` у пустых обязательных показывается сразу.
+- Тест `test/contract/openconnect_source_form_test.dart` (чистая логика):
+  компактность и отступ, порядок ключей, `token`/`cookie`/`detour`/
+  `tls.client_*`/сквозные сохраняются (в том числе при смене варианта
+  сертификата), не-объект → `null`.
+- Эмулятор (правка узла формой, сверка Source и тела после Save) не
+  гонялся.
+
 ### C. Второй фактор и SSO через libbox
+
+**Волна C выполнена (15.10.2026).** Реализация:
+- подписку держит натив (`BoxCommandClient.syncOpenConnectStatus`): после
+  старта VPN и после reload — по наличию endpoint'а `openconnect` в
+  конфиге; снимается в `shutdownAll`. В отличие от Tailscale Dart её не
+  поднимает: челлендж приходит сразу после старта, а старт бывает с
+  QS-плитки без Flutter-движка. Канал `lxbox/cc/openconnect` несёт снапшот
+  `{endpoints, callback}`, `ccGetOpenConnectStatus` отдаёт текущий;
+- уведомление «Sign-in required: <tag>» ставит натив (канал уведомления
+  VPN, своё id на тег), снимает, когда челлендж исчез; тап → экстра
+  `openconnect_tag` → Dart забирает (`ccTakeOpenConnectOpenRequest`) на
+  старте и при возврате;
+- слушатель SSO — в нативе (`OpenConnectCallbackServer.kt`, только
+  127.0.0.1), пойманный URL отдаёт ядру сам, без Dart; гаснет при ответе,
+  «Not now», смене/исчезновении челленджа и остановке VPN;
+- диалоги и метка узла — `lib/screens/home/openconnect_auth_ui.dart`,
+  метка — на месте подписи состояния endpoint'а в строке узла (`node_row`);
+  чистая логика (порт из префиксов, режим, счётчик неверных кодов, ответ
+  формой, метка) — `lib/services/openconnect_auth.dart`, юниты
+  `test/services/openconnect_auth_test.dart`.
+
+Не проверено: реальный челлендж и SAML (нужен шлюз владельца); на
+эмуляторе подписка не прогонялась.
 
 Канал есть всегда (libbox CommandClient), в отличие от лаунчера в
 классическом режиме.
@@ -247,6 +432,12 @@ SSO cookie-режим (встроенный WebView с чтением cookie —
   Реальный челлендж — только у владельца на его FortiGate.
 
 ## Не решено / дальше
+
+- 15.10.2026, эмулятор: туннель FortiGate встаёт за ~10 с (DTLS по UDP не
+  проходит, ядро ждёт ~8 с и уходит на TLS); стартовый пинг успевает
+  отметить узел `-1`, повторный — 1194 мс. Повторный пинг после
+  `connected` владелец решил НЕ делать; обход — «TCP only (no DTLS)» в
+  Advanced.
 
 - Живой прогон второго фактора и SAML на FortiGate с MFA — у владельца.
 - SSO cookie-режим (AnyConnect) через WebView.

@@ -46,6 +46,17 @@ const _kSharedRefs = <String, String>{
 /// читают другие слои по имени файла ([ContractRegistry.rawShared]).
 const _kStandaloneShared = <String>['source_kinds.json', 'allowlists.json'];
 
+/// Контракт 1.1.122 (`TASKS_LXBOX.md` §119 п. 1) — запись wildcard в `fields`
+/// объекта. Это НЕ поле: ключи этого объекта, которых нет в `fields`,
+/// копируются как есть, без `unknown_key` и без проверки. Не наследуется во
+/// вложенные объекты без своего `*`. Позиция в `order` — слот эмиссии
+/// сквозных ключей (по алфавиту).
+///
+/// В разобранных картах полей ([FieldSchema.fields], [BodySchema.fields])
+/// записи `*` нет — её пропускают все обходы полей по построению; признак
+/// живёт в `order` ([FieldSchema.hasWildcard], [BodySchema.hasWildcard]).
+const kWildcardField = '*';
+
 /// Описание поля тела — обёртка над картой реестра.
 ///
 /// Атрибуты не копируются в поля класса: их 30+, читает их санитайзер
@@ -91,6 +102,22 @@ final class FieldSchema {
       for (final e in v.entries)
         e.key as String: FieldSchema((e.value as Map).cast<String, dynamic>()),
     };
+  }
+
+  /// Контракт 1.1.123 — имена вариантов в порядке `values` секции (форма
+  /// рисует их в этом порядке); у поля без [variants] — пусто.
+  List<String> get variantValues {
+    final v = raw['variant_values'];
+    if (v is List) return [for (final e in v) '$e'];
+    return variants?.keys.toList() ?? const [];
+  }
+
+  /// `forbidden_for`/`allowed_for` поля пускают схему [scheme] (лаунчер:
+  /// `Field.AllowedForScheme`).
+  bool allowedForScheme(String scheme) {
+    if (forbiddenFor?.contains(scheme) ?? false) return false;
+    final allowed = allowedFor;
+    return allowed == null || allowed.isEmpty || allowed.contains(scheme);
   }
 
   bool get inline => raw['inline'] == true;
@@ -359,9 +386,31 @@ final class FieldSchema {
     if (f is! Map) return null;
     return {
       for (final e in f.entries)
-        e.key as String: FieldSchema((e.value as Map).cast<String, dynamic>()),
+        if (e.key != kWildcardField && e.value is Map)
+          e.key as String: FieldSchema((e.value as Map).cast<String, dynamic>()),
     };
   }
+
+  /// Контракт 1.1.122 — у вложенного объекта есть wildcard [kWildcardField]:
+  /// его неописанные ключи проходят как есть. Только ЭТОТ объект — вглубь
+  /// признак не наследуется.
+  bool get hasWildcard {
+    if (order?.contains(kWildcardField) ?? false) return true;
+    final f = raw['fields'];
+    return f is Map && f.containsKey(kWildcardField);
+  }
+
+  /// Контракт 1.1.122 — атрибут `form` поля (`block`, `visible_when`,
+  /// `required`, `required_unless`, `min`, `max`). Читает его только модель
+  /// формы (`registry_form.dart`); санитайзер, гейт и маппер — нет. `null` —
+  /// поля в форме нет.
+  Map<String, dynamic>? get form {
+    final v = raw['form'];
+    return v is Map ? v.cast<String, dynamic>() : null;
+  }
+
+  /// Контракт 1.1.122 — роль поля (`credential` | `private_key` | `variant`).
+  String? get role => raw['role'] as String?;
 }
 
 /// Схема тела записи: порядок ключей + поля. Порядок нормативен — по нему
@@ -379,13 +428,16 @@ final class BodySchema {
     this.minCore,
     this.onCoreUnsupported,
     this.levels = const [],
-    this.fieldsUnchecked = false,
+    this.form,
   });
 
-  /// Контракт 1.1.99 — `fields_unchecked`: поля тела не описаны и не
-  /// проверяются (`openvpn-client`). Санитайзер отдаёт такое тело как
-  /// написано, без кодов.
-  final bool fieldsUnchecked;
+  /// Контракт 1.1.122 — секция `body.form` (`blocks`, `choices`). Читает её
+  /// только модель формы (`registry_form.dart`). `null` — формы у схемы нет.
+  final Map<String, dynamic>? form;
+
+  /// Контракт 1.1.122 — у корня тела есть wildcard [kWildcardField]
+  /// (эквивалент снятого `fields_unchecked` — `order: ["*"]`).
+  bool get hasWildcard => order.contains(kWildcardField);
 
   /// Тег ядра, по которому сверен список полей.
   final String core;
@@ -831,11 +883,20 @@ final class ContractRegistry {
   bool isEndpointType(String singboxType) =>
       _protocols[singboxType]?['kind'] == 'endpoint';
 
-  /// Контракт 1.1.99 — тип известен реестру, но поля его тела не описаны
-  /// (`body.fields_unchecked`): узел принимается без своей модели, тело
-  /// уходит как написано, предупреждений нет.
-  bool isUncheckedType(String singboxType) =>
-      schemaFor(singboxType)?.fieldsUnchecked == true;
+  /// Контракт 1.1.99/1.1.122 — у типа есть схема тела в реестре. Узел такого
+  /// типа без своей модели в приложении (`openvpn-client`, `openconnect`)
+  /// принимается из любого источника, а тело судит санитайзер по реестру
+  /// (поля, которых реестр не описал, проходят через wildcard `*`).
+  bool knowsType(String singboxType) => schemaFor(singboxType) != null;
+
+  /// Контракт 1.1.122 (`node_materialize.go` лаунчера) — описано ли у схемы
+  /// протокола поле [name] в КОРНЕ тела. Wildcard полем не считается: адрес
+  /// узла (`server`/`server_port`) дописывается в тело только при описанном
+  /// поле, каждое отдельно — у `openconnect` нет `server_port`, и под `*`
+  /// дописанный ключ ушёл бы в ядро без проверки.
+  bool describesRootField(String singboxType, String name) =>
+      name != kWildcardField &&
+      (schemaFor(singboxType)?.fields.containsKey(name) ?? false);
 
   /// §480 W5 — имена загруженных протоколов.
   ///
@@ -883,6 +944,12 @@ final class ContractRegistry {
     final order = <String>[];
     final fields = <String, FieldSchema>{};
     for (final key in rawOrder) {
+      // Контракт 1.1.122 — wildcard: не поле, в `fields` его нет; в `order`
+      // остаётся как слот эмиссии и признак [BodySchema.hasWildcard].
+      if (key == kWildcardField) {
+        if (!order.contains(key)) order.add(key);
+        continue;
+      }
       final f = rawFields[key];
       if (f == null) continue;
       if (f.inline && f.ref != null) {
@@ -892,6 +959,7 @@ final class ContractRegistry {
         // структура ядра держит DialerOptions.
         for (final k in sub.order) {
           final sf = sub.fields[k];
+          // Wildcard вливаемой суб-схемы к телу не относится (не наследуется).
           if (sf == null || fields.containsKey(k)) continue;
           order.add(k);
           fields[k] = sf;
@@ -932,7 +1000,7 @@ final class ContractRegistry {
       levels: [
         for (final e in (body['levels'] as List?) ?? const []) '$e',
       ],
-      fieldsUnchecked: body['fields_unchecked'] == true,
+      form: (body['form'] as Map?)?.cast<String, dynamic>(),
     );
   }
 
@@ -999,6 +1067,10 @@ final class ContractRegistry {
       if ((v is List && v.isEmpty) || (v is Map && v.isEmpty)) continue;
       raw[k] = v;
     }
+    // Контракт 1.1.123 — правила формы у ref-поля схемы: `server` у одной
+    // схемы обязателен в форме, у другой его в форме нет вовсе. Пустой
+    // `form: {}` значим (поле в форме без своих правил).
+    if (w['form'] is Map) raw['form'] = w['form'];
     return FieldSchema(Map.unmodifiable(raw));
   }
 
@@ -1045,6 +1117,11 @@ final class ContractRegistry {
     }
     final raw = _wrapperAttrs(src, 'transports');
     raw['discriminator'] = disc;
+    // Контракт 1.1.123 — порядок вариантов для формы: `values` секции.
+    raw['variant_values'] = List<String>.unmodifiable([
+      for (final v in (body?['values'] as List?) ?? vs.keys)
+        if (variants.containsKey('$v')) '$v',
+    ]);
     raw['variants'] = {for (final e in variants.entries) e.key: e.value.raw};
     return FieldSchema._expanded(
         Map.unmodifiable(raw), null, Map.unmodifiable(variants));
@@ -1064,7 +1141,8 @@ final class ContractRegistry {
     if (f is! Map) return const {};
     return {
       for (final e in f.entries)
-        e.key as String: FieldSchema((e.value as Map).cast<String, dynamic>()),
+        if (e.key != kWildcardField && e.value is Map)
+          e.key as String: FieldSchema((e.value as Map).cast<String, dynamic>()),
     };
   }
 }
