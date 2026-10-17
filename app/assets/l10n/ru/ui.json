@@ -1860,6 +1860,9 @@
   "Detour copied": {
     "value": "Detour скопирован"
   },
+  "DNS": {
+    "value": "DNS"
+  },
   "DNS exchange failed: %s": {
     "value": "Сбой DNS-запроса: %s"
   },
@@ -1871,9 +1874,6 @@
   },
   "DNS Servers": {
     "value": "DNS-серверы"
-  },
-  "DNS Settings": {
-    "value": "Настройки DNS"
   },
   "DNS cache cleared": {
     "value": "Кэш DNS очищен"
@@ -1916,9 +1916,6 @@
   },
   "DNS server — via \"%1$s\"": {
     "value": "DNS-сервер — через \"%1$s\""
-  },
-  "DNS servers and rules": {
-    "value": "DNS-серверы и правила"
   },
   "DNS-over-HTTP/3 · port 443": {
     "value": "DNS-over-HTTP/3 · порт 443"
@@ -2094,8 +2091,8 @@
   "Directions": {
     "value": "Направления"
   },
-  "Directions and routing rules": {
-    "value": "Направления и правила маршрутизации"
+  "Directions, rules and DNS": {
+    "value": "Направления, правила и DNS"
   },
   "Directions: %d": {
     "value": "Направлений: %d"
@@ -2460,6 +2457,15 @@
   },
   "Unwrap lines": {
     "value": "Не переносить строки"
+  },
+  "More options": {
+    "value": "Ещё"
+  },
+  "Show original": {
+    "value": "Показать исходный"
+  },
+  "Magnifier": {
+    "value": "Лупа"
   },
   "Imported: %s": {
     "value": "Импортировано: %s"
@@ -4469,11 +4475,35 @@
   "Search domain / IP / app": {
     "value": "Поиск: домен / IP / приложение"
   },
-  "Skip presets": {
-    "value": "Пропускать пресеты"
+  "Skip Tailscale presets": {
+    "value": "Пропускать пресеты Tailscale"
   },
   "Presets will not add routing or DNS rules for this node.": {
     "value": "Пресеты не будут добавлять правила маршрутизации и DNS для этого узла."
+  },
+  "Incoming connections from this tunnel": {
+    "value": "Входящие соединения из этого туннеля"
+  },
+  "Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected.": {
+    "value": "Пиры на той стороне туннеля могут открывать соединения к этому устройству. Без переключателей ниже такие соединения отклоняются."
+  },
+  "Allow access to this device": {
+    "value": "Доступ к этому устройству"
+  },
+  "Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable.": {
+    "value": "Пиры видят сервисы на туннельном адресе устройства. Сервис видит их как 127.0.0.1, поэтому доступно всё, что доверяет localhost."
+  },
+  "Expose local network": {
+    "value": "Открыть локальную сеть"
+  },
+  "Peers reach private networks behind this device.": {
+    "value": "Пиры видят частные сети за этим устройством."
+  },
+  "Allow as gateway": {
+    "value": "Работать шлюзом"
+  },
+  "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.": {
+    "value": "Пиры пускают через устройство любой трафик; он уходит в исходящий канал, выбранный в пресете «Входящие из туннелей»."
   },
   "No matching nodes": {
     "value": "Нет подходящих узлов"
@@ -4511,8 +4541,8 @@
   "Send to another app": {
     "value": "Отправить в другое приложение"
   },
-  "Send x-hwid + device headers on every subscription fetch — for panels with HWID device limits (Remnawave). Off by default.": {
-    "value": "Отправлять x-hwid и заголовки устройства при каждой загрузке подписки — для панелей с лимитом устройств по HWID (Remnawave). По умолчанию выключено."
+  "Send x-hwid + device headers on every subscription fetch — for panels with HWID device limits (Remnawave). On by default.": {
+    "value": "Отправлять x-hwid и заголовки устройства при каждой загрузке подписки — для панелей с лимитом устройств по HWID (Remnawave). По умолчанию включено."
   },
   "Sends the Cloudflare client_id. Off for obfuscation (the device binding tends to get blocked).": {
     "value": "Отправляет client_id Cloudflare. При обфускации отключено — привязку к устройству часто блокируют."
@@ -6191,5 +6221,107 @@
   },
   "n/a": {
     "value": "н/д"
+  },
+  "Address: %s": {
+    "value": "Адрес: %s"
+  },
+  "Cannot reach the TV. Both devices must be on the same network; guest Wi-Fi often keeps devices from seeing each other.": {
+    "value": "Телевизор недоступен. Оба устройства должны быть в одной сети; гостевой Wi-Fi часто не даёт устройствам видеть друг друга."
+  },
+  "Code expires in %s": {
+    "value": "Код действует ещё %s"
+  },
+  "Connect this TV to Wi-Fi or Ethernet, then press New code.": {
+    "value": "Подключите телевизор к Wi-Fi или Ethernet и нажмите «Новый код»."
+  },
+  "Could not start receiving: %s": {
+    "value": "Не удалось начать приём: %s"
+  },
+  "Device: %s": {
+    "value": "Устройство: %s"
+  },
+  "New code": {
+    "value": "Новый код"
+  },
+  "No local network": {
+    "value": "Нет локальной сети"
+  },
+  "On your phone, open Backup & restore in LxBox, choose Send to TV and scan this code.": {
+    "value": "На телефоне откройте в LxBox «Резервное копирование», выберите «Отправить на TV» и отсканируйте этот код."
+  },
+  "Preparing the code…": {
+    "value": "Готовим код…"
+  },
+  "Receive from phone": {
+    "value": "Принять с телефона"
+  },
+  "Receive settings": {
+    "value": "Приём настроек"
+  },
+  "Rejected attempts with a wrong code: %1$d of %2$d": {
+    "value": "Отклонено попыток с чужим кодом: %1$d из %2$d"
+  },
+  "Scan code": {
+    "value": "Сканировать код"
+  },
+  "Scan the code shown by LxBox on your TV to send the categories selected under Export over the local network. Both devices must be on the same network.": {
+    "value": "Отсканируйте код, который показывает LxBox на телевизоре, чтобы отправить по локальной сети категории, отмеченные в разделе «Экспорт». Оба устройства должны быть в одной сети."
+  },
+  "Send": {
+    "value": "Отправить"
+  },
+  "Send to %s?": {
+    "value": "Отправить на %s?"
+  },
+  "Send to TV": {
+    "value": "Отправить на TV"
+  },
+  "Sending failed: %s": {
+    "value": "Не удалось отправить: %s"
+  },
+  "Sending failed: HTTP %d": {
+    "value": "Не удалось отправить: HTTP %d"
+  },
+  "Sent. Confirm the restore on the TV.": {
+    "value": "Отправлено. Подтвердите восстановление на телевизоре."
+  },
+  "Show a code on this TV and scan it with LxBox on your phone. The phone sends its settings over the local network; you confirm them here before they apply.": {
+    "value": "Покажите код на этом телевизоре и отсканируйте его в LxBox на телефоне. Телефон отправит настройки по локальной сети, а применятся они только после подтверждения здесь."
+  },
+  "Show code": {
+    "value": "Показать код"
+  },
+  "The TV cannot restore these settings: %s": {
+    "value": "Телевизор не может восстановить эти настройки: %s"
+  },
+  "The TV did not accept the code. Show a new code on the TV and scan it again.": {
+    "value": "Телевизор не принял код. Покажите на телевизоре новый код и отсканируйте его снова."
+  },
+  "The code has expired or was already used. Show a new code on the TV.": {
+    "value": "Код истёк или уже использован. Покажите на телевизоре новый код."
+  },
+  "The code has expired. Press New code to get another one.": {
+    "value": "Код истёк. Нажмите «Новый код», чтобы получить другой."
+  },
+  "The phone sent settings that cannot be restored: %s": {
+    "value": "Телефон прислал настройки, которые нельзя восстановить: %s"
+  },
+  "The selected categories are encrypted with the key from the code and sent over the local network. The TV shows what arrived and asks before applying it.": {
+    "value": "Отмеченные категории шифруются ключом из кода и отправляются по локальной сети. Телевизор покажет, что пришло, и спросит перед применением."
+  },
+  "The settings are too large to send.": {
+    "value": "Настройки слишком большие для отправки."
+  },
+  "This is not a LxBox transfer code": {
+    "value": "Это не код передачи LxBox"
+  },
+  "Too many attempts with a wrong code. The code is closed; press New code to get another one.": {
+    "value": "Слишком много попыток с чужим кодом. Код закрыт; нажмите «Новый код», чтобы получить другой."
+  },
+  "Waiting for the phone…": {
+    "value": "Ждём телефон…"
+  },
+  "The TV is busy with another request. Try again in a moment.": {
+    "value": "Телевизор занят другим запросом. Попробуйте ещё раз чуть позже."
   }
 }

@@ -8,12 +8,66 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Editor ⋮ menu ([task 660](docs/spec/tasks/660-editor-overflow-menu.md)).**
+  Every JSON field and viewer gets a ⋮ menu at the right end of its button
+  row. Format moves there from the row, and read-only viewers (a subscription
+  Source, the node JSON) get it too: it formats only what is shown, and Show
+  original brings the source text back. Magnifier turns the selection
+  magnifier on and off; the setting is saved for the whole app. After a wrap
+  toggle or Format the wrap button and the menu show a spinner and ignore
+  taps until the editor has finished laying out the lines.
+
+### Fixed
+
+- **Start after a long idle no longer hangs in “stopping”
+  ([task 663](docs/spec/tasks/663-force-stop-reaches-stuck-stopping.md)).**
+  Start could stay dead until the app was force-closed; force-stop now
+  reaches the service even after its receiver is gone. Checked on the
+  emulator only, not yet on a real device.
+
 ---
 
 ## [2.25.16] — 2026-10-15
 
 ### Added
 
+- **OpenConnect in Add server
+  ([task 654](docs/spec/tasks/654-openconnect-fortinet-support.md)).** A new
+  OpenConnect tab built from the registry form model: Tag, Gateway (FortiGate,
+  Cisco AnyConnect, GlobalProtect, F5, Pulse, Juniper; FortiGate by default),
+  Server, Username, Password; Security (System CA / Pinned fingerprint / Do
+  not verify, SNI, Group / Realm, Disable SSO); Advanced (TCP only (no DTLS),
+  User-Agent, Hostcheck, MTU, DPD interval, Reconnect timeout, Disable IPv6,
+  Allow legacy crypto). An empty field writes no key. The node row shows the
+  gateway type (`openconnect·fortinet`). For an OpenConnect node the same
+  form sits above the JSON on the Source tab of the node screen; form and
+  text are one body, keys the form does not show are kept, saved by the
+  screen's Save.
+- **OpenConnect second factor and SSO (task 654).** A "Sign-in required:
+  <tag>" notification and a dialog with the gateway's fields (Submit, Not
+  now, Request a new code); the node row shows "Waiting for sign-in".
+  FortiGate SAML: the link opens in the browser, the app listens on
+  `127.0.0.1` (port from the gateway, otherwise 8020) and returns the
+  redirect to the core. Cookie-mode SSO (Cisco AnyConnect) is not supported.
+  (RU: OpenConnect: уведомление «Sign-in required: <тег>» и диалог с полями
+  шлюза; SAML FortiGate через браузер и слушатель на `127.0.0.1`; SSO с
+  cookie (Cisco AnyConnect) не поддержан.)
+- **Tunnel ingress preset and node switches
+  ([task 656](docs/spec/tasks/656-contract-1130-tunnel-ingress.md)).**
+  Connections that peers open from the other side of a WireGuard, AmneziaWG,
+  OpenVPN or OpenConnect node are rejected unless the node allows them:
+  Allow access to this device, Expose local network, Allow as gateway (block
+  "Incoming connections from this tunnel" in node settings, off by default).
+  The preset is on by default and is added once to existing installs; its
+  settings: Incoming from tunnels (`reject`), Device and local network go to
+  (`direct-out`), Gateway traffic goes to (`vpn-1`). DNS queries from a
+  closed tunnel are rejected too. Tailscale nodes are not covered.
+  (RU: Пресет Tunnel ingress включён по умолчанию, в том числе у
+  существующих установок: входящие из клиентских туннелей отклоняются, если
+  узел их не разрешил переключателями блока «Incoming connections from this
+  tunnel».)
 - **Line-wrap button in the JSON editor
   ([task 649](docs/spec/tasks/649-json-view-wrap-toggle.md)).** The Config
   editor and the read-only JSON views with sticky headers (subscription Source,
@@ -38,6 +92,24 @@
 
 ### Changed
 
+- **DNS settings are a tab of the Routing screen
+  ([task 655](docs/spec/tasks/655-dns-tab-in-routing.md)).** Tabs: Directions
+  · Presets · Rules · DNS · Tunnel apps. The "DNS Settings" side-menu item is
+  removed; the Routing item reads "Directions, rules and DNS". The DNS health
+  sheet and support links `route:dns` / `route:routing/dns` open Routing on
+  the DNS tab. The tab content is unchanged; edits on the DNS tab and on the
+  other Routing tabs do not overwrite each other.
+  (RU: Настройки DNS — вкладка экрана Routing после Rules; пункт меню
+  «DNS Settings» убран.)
+- **"Skip presets" → "Skip Tailscale presets" (task 656).** Shown only on
+  Tailscale nodes; the key is `skip_tailscale_presets`, the old
+  `skip_presets` is still read in storage and LX Backup.
+- **Launcher contract 1.1.119 → 1.1.132.** OpenConnect fields and the form
+  model in the registry, wildcard `*` for undescribed keys (`openvpn-client`,
+  `openconnect`), an empty described object (`tls.ech: {}`, `transport: {}`)
+  is dropped with a warning, the short `#if` form and `#if` on `#do`, node
+  fields `allow_local` / `allow_lan` / `allow_gateway`, the parity criterion
+  for `rules[].dns`.
 - **JSON editor gestures by direction (task 649).** A sideways swipe over a
   long line scrolls the text instead of switching the tab; where nothing
   scrolls sideways the swipe switches the tab as before. A vertical swipe
@@ -46,9 +118,30 @@
 - **WARP: the eight `8.x` blocks are back in the WireGuard endpoint pool
   ([task 651](docs/spec/tasks/651-warp-8x-blocks-return.md)).** Fresh
   measurements show them answering on a par with the other blocks.
+- **Core `v1.14.3-lx.18` → `v1.14.3-lx.21`
+  ([docs/KERNEL.md](docs/KERNEL.md)).** Nothing changes for the app: lx.19
+  and lx.20 fix the Linux router daemon, lx.21 adds the experimental
+  TrustTunnel protocol to the desktop and router builds only — the Android
+  library does not include it. The Java surface is identical to lx.18.
+  (RU: Ядро `v1.14.3-lx.18` → `v1.14.3-lx.21`. Для приложения ничего не
+  меняется: lx.19 и lx.20 правят Linux-демон роутера, lx.21 добавляет
+  экспериментальный протокол TrustTunnel только в desktop- и роутерные
+  сборки — в Android-библиотеке его нет. Java-поверхность идентична lx.18.)
 
 ### Fixed
 
+- **A node the core cannot decode is turned off
+  ([task 653](docs/spec/tasks/653-core-decode-error-index-to-tag.md)).** A
+  core refusal at decoding (`outbounds[N].network: json: unknown field`, for
+  example an old MASQUE node from sing-box JSON with `network: h2|h3`) left
+  the VPN down and the node on. The index is now matched to the tag in the
+  config that was sent; the node is turned off and the start is repeated, as
+  with other core rejections.
+  (RU: Отказ ядра на декодировании конфига теперь выключает узел по индексу и
+  повторяет старт.)
+- **WebSocket `Host` as a list (task 654).** A sing-box JSON node with
+  `headers.Host` as a list got the host `[a.com]`; the first element is taken
+  now.
 - **Selection magnifier (task 649).** In the Config editor after scrolling down
   it was blank; in node JSON after moving the page it showed lines from
   elsewhere. It now draws from the editor itself.

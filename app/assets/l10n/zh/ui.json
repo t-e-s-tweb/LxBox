@@ -1641,6 +1641,9 @@
   "Detour copied": {
     "value": "已复制 detour"
   },
+  "DNS": {
+    "value": "DNS"
+  },
   "DNS exchange failed: %s": {
     "value": "DNS 查询失败：%s"
   },
@@ -1652,9 +1655,6 @@
   },
   "DNS Servers": {
     "value": "DNS 服务器"
-  },
-  "DNS Settings": {
-    "value": "DNS 设置"
   },
   "DNS cache cleared": {
     "value": "DNS 缓存已清除"
@@ -1697,9 +1697,6 @@
   },
   "DNS server — via \"%1$s\"": {
     "value": "DNS 服务器 —— 经「%1$s」"
-  },
-  "DNS servers and rules": {
-    "value": "DNS 服务器与规则"
   },
   "DNS-over-HTTP/3 · port 443": {
     "value": "DNS-over-HTTP/3 · 端口 443"
@@ -1875,8 +1872,8 @@
   "Directions": {
     "value": "方向"
   },
-  "Directions and routing rules": {
-    "value": "方向与路由规则"
+  "Directions, rules and DNS": {
+    "value": "方向、规则与 DNS"
   },
   "Directions: %d": {
     "value": "方向：%d"
@@ -2229,6 +2226,15 @@
   },
   "Unwrap lines": {
     "value": "取消自动换行"
+  },
+  "More options": {
+    "value": "更多选项"
+  },
+  "Show original": {
+    "value": "显示原文"
+  },
+  "Magnifier": {
+    "value": "放大镜"
   },
   "Imported: %s": {
     "value": "已导入：%s"
@@ -4205,11 +4211,35 @@
   "Search domain / IP / app": {
     "value": "搜索域名 / IP / 应用"
   },
-  "Skip presets": {
-    "value": "跳过预设"
+  "Skip Tailscale presets": {
+    "value": "跳过 Tailscale 预设"
   },
   "Presets will not add routing or DNS rules for this node.": {
     "value": "预设不会为此节点添加路由或 DNS 规则。"
+  },
+  "Incoming connections from this tunnel": {
+    "value": "来自此隧道的入站连接"
+  },
+  "Peers on the other side of this tunnel can open connections to this device. Without the switches below they are rejected.": {
+    "value": "隧道另一端的对等方可以向此设备发起连接。未打开下方开关时，这些连接会被拒绝。"
+  },
+  "Allow access to this device": {
+    "value": "允许访问此设备"
+  },
+  "Peers reach services on this device's tunnel address. The service sees them as 127.0.0.1, so everything that trusts localhost becomes reachable.": {
+    "value": "对等方可访问此设备隧道地址上的服务。服务看到的来源是 127.0.0.1，因此所有信任 localhost 的服务都会变得可访问。"
+  },
+  "Expose local network": {
+    "value": "开放本地网络"
+  },
+  "Peers reach private networks behind this device.": {
+    "value": "对等方可访问此设备后面的私有网络。"
+  },
+  "Allow as gateway": {
+    "value": "允许作为网关"
+  },
+  "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.": {
+    "value": "对等方可通过此设备转发任意流量；流量经由“隧道入站”预设中选择的出站发出。"
   },
   "No matching nodes": {
     "value": "没有匹配的节点"
@@ -4247,8 +4277,8 @@
   "Send to another app": {
     "value": "发送到其它应用"
   },
-  "Send x-hwid + device headers on every subscription fetch — for panels with HWID device limits (Remnawave). Off by default.": {
-    "value": "每次获取订阅时发送 x-hwid 与设备请求头——用于按 HWID 限制设备的面板（Remnawave）。默认关闭。"
+  "Send x-hwid + device headers on every subscription fetch — for panels with HWID device limits (Remnawave). On by default.": {
+    "value": "每次获取订阅时发送 x-hwid 与设备请求头——用于按 HWID 限制设备的面板（Remnawave）。默认开启。"
   },
   "Sends the Cloudflare client_id. Off for obfuscation (the device binding tends to get blocked).": {
     "value": "会发送 Cloudflare 的 client_id。使用混淆时关闭（设备绑定容易被封）。"
@@ -5912,5 +5942,107 @@
   },
   "n/a": {
     "value": "不适用"
+  },
+  "Address: %s": {
+    "value": "地址：%s"
+  },
+  "Cannot reach the TV. Both devices must be on the same network; guest Wi-Fi often keeps devices from seeing each other.": {
+    "value": "无法连接电视。两台设备必须在同一网络中；访客 Wi-Fi 通常会阻止设备互相访问。"
+  },
+  "Code expires in %s": {
+    "value": "代码将在 %s 后过期"
+  },
+  "Connect this TV to Wi-Fi or Ethernet, then press New code.": {
+    "value": "请将电视连接到 Wi-Fi 或以太网，然后按“新代码”。"
+  },
+  "Could not start receiving: %s": {
+    "value": "无法开始接收：%s"
+  },
+  "Device: %s": {
+    "value": "设备：%s"
+  },
+  "New code": {
+    "value": "新代码"
+  },
+  "No local network": {
+    "value": "无本地网络"
+  },
+  "On your phone, open Backup & restore in LxBox, choose Send to TV and scan this code.": {
+    "value": "在手机上打开 LxBox 的“备份与恢复”，选择“发送到电视”并扫描此代码。"
+  },
+  "Preparing the code…": {
+    "value": "正在生成代码…"
+  },
+  "Receive from phone": {
+    "value": "从手机接收"
+  },
+  "Receive settings": {
+    "value": "接收设置"
+  },
+  "Rejected attempts with a wrong code: %1$d of %2$d": {
+    "value": "错误代码的尝试已拒绝：%1$d / %2$d"
+  },
+  "Scan code": {
+    "value": "扫描代码"
+  },
+  "Scan the code shown by LxBox on your TV to send the categories selected under Export over the local network. Both devices must be on the same network.": {
+    "value": "扫描电视上 LxBox 显示的代码，通过本地网络发送“导出”中选中的类别。两台设备必须在同一网络中。"
+  },
+  "Send": {
+    "value": "发送"
+  },
+  "Send to %s?": {
+    "value": "发送到 %s？"
+  },
+  "Send to TV": {
+    "value": "发送到电视"
+  },
+  "Sending failed: %s": {
+    "value": "发送失败：%s"
+  },
+  "Sending failed: HTTP %d": {
+    "value": "发送失败：HTTP %d"
+  },
+  "Sent. Confirm the restore on the TV.": {
+    "value": "已发送。请在电视上确认恢复。"
+  },
+  "Show a code on this TV and scan it with LxBox on your phone. The phone sends its settings over the local network; you confirm them here before they apply.": {
+    "value": "在这台电视上显示代码，然后用手机上的 LxBox 扫描。手机会通过本地网络发送设置，在这里确认后才会应用。"
+  },
+  "Show code": {
+    "value": "显示代码"
+  },
+  "The TV cannot restore these settings: %s": {
+    "value": "电视无法恢复这些设置：%s"
+  },
+  "The TV did not accept the code. Show a new code on the TV and scan it again.": {
+    "value": "电视未接受该代码。请在电视上显示新代码并重新扫描。"
+  },
+  "The code has expired or was already used. Show a new code on the TV.": {
+    "value": "代码已过期或已被使用。请在电视上显示新代码。"
+  },
+  "The code has expired. Press New code to get another one.": {
+    "value": "代码已过期。按“新代码”获取新的代码。"
+  },
+  "The phone sent settings that cannot be restored: %s": {
+    "value": "手机发送的设置无法恢复：%s"
+  },
+  "The selected categories are encrypted with the key from the code and sent over the local network. The TV shows what arrived and asks before applying it.": {
+    "value": "选中的类别会用代码中的密钥加密，并通过本地网络发送。电视会显示收到的内容，并在应用前询问。"
+  },
+  "The settings are too large to send.": {
+    "value": "设置太大，无法发送。"
+  },
+  "This is not a LxBox transfer code": {
+    "value": "这不是 LxBox 传输代码"
+  },
+  "Too many attempts with a wrong code. The code is closed; press New code to get another one.": {
+    "value": "错误代码的尝试次数过多。代码已关闭；按“新代码”获取新的代码。"
+  },
+  "Waiting for the phone…": {
+    "value": "正在等待手机…"
+  },
+  "The TV is busy with another request. Try again in a moment.": {
+    "value": "电视正在处理另一个请求。请稍后重试。"
   }
 }
