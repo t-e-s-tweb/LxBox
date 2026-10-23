@@ -22,6 +22,7 @@ import '../vpn/cc_channel.dart';
 import '../widgets/outbound_picker.dart';
 import 'dns_server_edit_screen.dart';
 import 'dns_settings_screen/dns_server_catalog_screen.dart';
+import 'dns_settings_screen/dns_server_copy.dart';
 import 'dns_settings_screen/dns_server_delete.dart';
 import 'dns_settings_screen/dns_server_resolver.dart';
 import 'dns_settings_screen/resolved_server.dart';
@@ -397,17 +398,21 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
   /// редактор в new-режиме (kind inline).
   /// Заготовка — форма UDP с пустым адресом (save требует ввода); порт/
   /// detour отсутствуют — ключи появляются только при явном выборе.
-  Future<void> _addServer() async {
+  /// §682 — [initial]: заготовка Duplicate (копия шаблонного/пресетного
+  /// сервера), открывается тем же редактором нового сервера.
+  Future<void> _addServer({DnsServerInline? initial}) async {
     final result = await openDnsServerEditor(
       context,
-      initialRef: DnsServerInline(
-        enabled: true,
-        tag: 'dns_new',
-        // §279 seed-time-локализация: метка резолвится через активную локаль
-        // в момент создания (дальше — user data, ретроактивно не мигрируется).
-        description: getLocalText.s("My DNS"),
-        body: const <String, dynamic>{'type': 'udp'},
-      ),
+      initialRef: initial ??
+          DnsServerInline(
+            enabled: true,
+            tag: 'dns_new',
+            // §279 seed-time-локализация: метка резолвится через активную
+            // локаль в момент создания (дальше — user data, ретроактивно не
+            // мигрируется).
+            description: getLocalText.s("My DNS"),
+            body: const <String, dynamic>{'type': 'udp'},
+          ),
       outboundOptions: _outboundOptions,
       dnsServerTags: _enabledServerTags,
       dnsMemberOptions: _dnsMemberOptions,
@@ -467,8 +472,16 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
       },
     );
     if (result == null || !mounted) return;
+    // §682 — Duplicate: копия открывается редактором нового сервера.
+    if (result.duplicate case final dup?) {
+      await _addServer(initial: dup);
+      return;
+    }
     setState(() {
-      if (result.wasDeleted) {
+      if (result.copy case final copy?) {
+        // §682 — «Save as copy»: оригинал и ссылки на него не трогаются.
+        _servers.add(copy);
+      } else if (result.wasDeleted) {
         _servers.removeAt(idx);
       } else if (result.saved != null) {
         _servers[idx] = result.saved!;
@@ -517,7 +530,11 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
 
   /// §117 задача 3: routing-правила с активным DNS-mirror'ом (routing order).
   List<CustomRule> get _ruleMirrors =>
-      [for (final cr in _customRules) if (cr.dnsMirrorActive) cr];
+      [
+        for (final cr in _customRules)
+          // §683 — Answer = Fixed IP тоже даёт DNS-правило группы.
+          if (cr.dnsMirrorActive || cr.dnsFixedActive) cr,
+      ];
 
   /// §117 (решение №6): display-модель списка DNS-правил. Элемент ≥0 —
   /// индекс standalone-записи в [_rules]; `-1` — атомарная mirror-группа
@@ -592,18 +609,26 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
         // (RuleDns.forceIpv4), каждая со своим свитчем. Блок виден, когда
         // настроен ХОТЬ ОДИН аспект — Force IPv4-правило без dedicated-
         // сервера больше не невидимка (гейт не требует serverTag).
-        final hasServerAspect = cr.dnsMirrorEligible; // serverTag настроен
+        // §683 — при Answer = Fixed IP строки сервера нет: режимы
+        // взаимоисключающие, ответ даёт само правило.
+        final hasFixedAspect = cr.dnsFixedActive;
+        final hasServerAspect =
+            cr.dnsMirrorEligible && !hasFixedAspect; // serverTag настроен
         // Вариант A (решение владельца): Force-строка — только когда галка
         // РЕАЛЬНО стоит (forceIpv4Active), не у любого eligible-правила.
         // Правило с одним сервером не тащит пустой Force-тумблер; включают
         // Force в редакторе правила.
         final hasForceAspect = cr.forceIpv4Active;
-        if (!hasServerAspect && !hasForceAspect) continue;
+        if (!hasServerAspect && !hasForceAspect && !hasFixedAspect) continue;
         final mirrors = _dnsMirrorsByRuleId[cr.id] ?? const <DnsMirrorEntry>[];
         Map<String, dynamic>? serverBody;
         Map<String, dynamic>? forceBody;
+        Map<String, dynamic>? fixedBody;
         for (final m in mirrors) {
-          if (m.serverless) {
+          if (m.fixedAnswer) {
+            // §683 — тело с адресами (A или AAAA) — для диалога по тапу.
+            if (m.body.containsKey('answer')) fixedBody ??= m.body;
+          } else if (m.serverless) {
             forceBody ??= m.body;
           } else {
             serverBody ??= m.body;
@@ -633,6 +658,21 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
           // Убрав Force и не имея server-аспекта → правило уходит из секции
           // (_toggleRuleForceIpv4(false) обнуляет dns). Галка активна →
           // serverless-mirror собран → forceBody не null (fallback defensive).
+          // §683 — Answer = Fixed IP: ✕ = Answer → Default (адреса
+          // остаются в правиле).
+          fixedIpRow: hasFixedAspect
+              ? DnsAspectRow(
+                  body: fixedBody ?? const <String, dynamic>{},
+                  enabled: true,
+                  // l10n-exempt: sing-box wire fields
+                  preview: 'action: predefined · answer: '
+                      '${cr.dns!.fixedIps.join(', ')}',
+                  note: cr is CustomRuleSrs
+                      ? getLocalText.s("matches only domains in the rule-set")
+                      : null,
+                  onRemove: () => _removeRuleFixedIp(cr),
+                )
+              : null,
           forceIpv4Row: hasForceAspect
               ? DnsAspectRow(
                   body: forceBody ??
@@ -857,6 +897,10 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
           onChanged: (v) => setState(() { _defaultResolver = v; _markDirty(); }),
           tooltip: getLocalText.s("Used by routing engine to resolve hostnames internally (outbound endpoints, routing rules). Not the resolver apps use.\n\nRecommended:\n  • dns_shield — default; races 6 encrypted providers, answers from whichever replies first\n  • cloudflare_udp — UDP to 1.1.1.1 (fast)\n  • google_udp — UDP to 8.8.8.8 (fast)\n  • google_doh — encrypted\n\n⚠ local_dns_resolver here leaks lookups to your ISP — system DNS bypasses the VPN."),
           warnIfLocal: true,
+          // §682 — резолвер через туннель: запросы ждут ещё не поднятый
+          // туннель.
+          tunnelDetour:
+              defaultResolverTunnelDetour(_defaultResolver, _displayedServers),
         ),
         if (_defaultResolver == 'local_dns_resolver')
           LocalResolverWarningBanner(
@@ -990,9 +1034,26 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
       }
     }
     if (resolved == null) return;
+    // §682 — Duplicate у шаблонного/пресетного сервера (и override).
+    final canCopy =
+        resolved.kind != ServerKind.inline || resolved.overrides != null;
     final action = await showRuleContextMenu(context, pos,
-        deleteEnabled: canDeleteDnsServer(resolved));
-    if (action != 'delete' || !mounted) return;
+        deleteEnabled: canDeleteDnsServer(resolved), showDuplicate: canCopy);
+    if (!mounted) return;
+    if (action == 'duplicate') {
+      final src = resolved;
+      await _addServer(
+        initial: dnsServerCopy(
+          body: src.body,
+          tag: dnsCopyTag(src.tag, {for (final s in _servers) s.tag}),
+          enabled: true,
+          description: getLocalText.s("%s (copy)",
+              src.description.isNotEmpty ? src.description : src.tag),
+        ),
+      );
+      return;
+    }
+    if (action != 'delete') return;
     final ok = await confirmDeleteDnsServer(context, resolved);
     if (ok != true || !mounted) return;
     setState(() {
@@ -1027,10 +1088,32 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
     final idx = _customRules.indexWhere((r) => r.id == cr.id);
     if (idx < 0 || cr.dns == null) return;
     final updated = switch (cr) {
-      CustomRuleInline() => cr.copyWith(dns: cr.dns!.copyWith(enabled: value)),
-      CustomRuleSrs() => cr.copyWith(dns: cr.dns!.copyWith(enabled: value)),
+      // §683 — включение сервера выходит из Answer = Fixed IP.
+      CustomRuleInline() => cr.copyWith(
+          dns: cr.dns!.copyWith(enabled: value, fixed: value ? false : null)),
+      CustomRuleSrs() => cr.copyWith(
+          dns: cr.dns!.copyWith(enabled: value, fixed: value ? false : null)),
       _ => cr,
     };
+    setState(() {
+      _customRules = [..._customRules]..[idx] = updated;
+      _markDirty();
+    });
+    _track(SettingsStorage.saveCustomRules(_customRules));
+  }
+
+  /// §683: ✕ у строки Fixed IP — Answer → Default (`fixed = false`),
+  /// адреса остаются в правиле (вернуть можно в редакторе).
+  void _removeRuleFixedIp(CustomRule cr) {
+    final idx = _customRules.indexWhere((r) => r.id == cr.id);
+    if (idx < 0 || cr.dns == null) return;
+    final next = cr.dns!.copyWith(fixed: false);
+    final updated = switch (cr) {
+      CustomRuleInline() => cr.copyWith(dns: next),
+      CustomRuleSrs() => cr.copyWith(dns: next),
+      _ => cr,
+    };
+    if (identical(updated, cr)) return;
     setState(() {
       _customRules = [..._customRules]..[idx] = updated;
       _markDirty();
@@ -1046,8 +1129,7 @@ class _DnsSettingsTabState extends State<DnsSettingsTab>
     final idx = _customRules.indexWhere((r) => r.id == cr.id);
     if (idx < 0) return;
     final next = (cr.dns ?? const RuleDns()).copyWith(forceIpv4: value);
-    final clear =
-        !next.forceIpv4 && !next.enabled && next.serverTag.isEmpty;
+    final clear = next.isEmpty;
     final updated = switch (cr) {
       CustomRuleInline() =>
         clear ? cr.copyWith(clearDns: true) : cr.copyWith(dns: next),
