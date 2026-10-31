@@ -10,6 +10,31 @@
 
 ### Added
 
+- **Hosts DNS server in the form, and Hosts in a DNS group
+  ([task 699](docs/spec/tasks/699-dns-hosts-server-and-group-overlay.md),
+  [#185](https://github.com/Leadaxe/LxBox/issues/185)).** The DNS server
+  editor gets a Hosts type: names with fixed IPv4/IPv6 addresses, one row per
+  name, edited in a dialog. A DNS group gets a Hosts block under Members: the
+  names these servers know are answered first, all other names go to the
+  members as before. Put such a group into Default Domain Resolver and a node
+  address like `wg.home` resolves to your own addresses, with `strategy`
+  choosing the family. The group key `hosts` needs core 1.14.4-lx.26 or
+  newer; on an older core it is left out of the config with a warning. A
+  hosts server referenced by a group cannot be turned off or deleted, and
+  renaming a DNS server now updates group members and Hosts too (a renamed
+  member used to drop out of its group).
+  (RU: Сервер Hosts в форме DNS-сервера и Hosts у DNS-группы. В редакторе
+  DNS-сервера есть тип Hosts: имена с заданными адресами IPv4/IPv6, строка
+  на имя, правка в диалоге. У DNS-группы под Members появился блок Hosts:
+  имена, которые знают эти серверы, отвечаются сразу, остальные уходят
+  участникам, как раньше. Такая группа в Default Domain Resolver даёт узлу с
+  адресом `wg.home` ваши адреса, семейство выбирает `strategy`. Ключ `hosts`
+  у группы работает с ядром 1.14.4-lx.26 и новее; на старом ядре он
+  снимается из конфига с предупреждением. Сервер hosts, на который ссылается
+  группа, нельзя выключить и удалить; переименование DNS-сервера теперь
+  переписывает членов и Hosts групп — раньше переименованный член выпадал из
+  группы.)
+
 - **Launcher contract 1.1.140 → 1.1.142
   ([task 698](docs/spec/tasks/698-trusttunnel-registry-node.md)).**
   `trusttunnel` (AdGuard TrustTunnel) outbounds from sing-box JSON are now a
@@ -98,6 +123,16 @@
 
 ### Changed
 
+- **Core `v1.14.4-lx.25` → `v1.14.4-lx.26`
+  ([docs/KERNEL.md](docs/KERNEL.md)).** A DNS group can list `hosts`
+  servers that answer the names they know before the group's servers
+  (Leadaxe/sing-box-lx#60). MTU alignment fixes: a proxy node inside a group no
+  longer lowers the MTU of a tunnel above the group, and tunnels carrying IPv6
+  are never set below 1280. No config changes.
+  (RU: Ядро `v1.14.4-lx.25` → `v1.14.4-lx.26`. DNS-группа может спрашивать
+  серверы `hosts` раньше своих серверов; поправки выравнивания MTU: прокси-узел
+  в группе больше не занижает MTU туннеля над группой, туннели с IPv6 не
+  опускаются ниже 1280. Конфиг не меняется.)
 - **Default TUN MTU is 9000 instead of 1492
   ([task 700](docs/spec/tasks/700-tun-mtu-default-9000.md)).** 9000 is the
   sing-box default; the tunnel interface is virtual, and the core re-sends TCP
