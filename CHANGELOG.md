@@ -10,6 +10,21 @@
 
 ### Added
 
+- **Launcher contract 1.1.140 → 1.1.142
+  ([task 698](docs/spec/tasks/698-trusttunnel-registry-node.md)).**
+  `trusttunnel` (AdGuard TrustTunnel) outbounds from sing-box JSON are now a
+  known type judged by the registry: a node without `username`, `password`
+  or `tls` is dropped at parse time with `field_missing`, as the launcher
+  does, instead of staying in the list until the build. Backup import merges
+  template and user DNS servers by tag only (an edited catalog server is the
+  same server), matching task 695 on both sides.
+  (RU: Контракт лаунчера 1.1.140 → 1.1.142. Узлы `trusttunnel` из sing-box
+  JSON — известный тип по реестру: узел без `username`, `password` или `tls`
+  снимается при разборе с кодом `field_missing`, как у лаунчера, а не живёт в
+  списке до сборки. Импорт бэкапа сливает шаблонные и пользовательские
+  DNS-серверы только по тегу (правленный сервер каталога — тот же сервер),
+  как в задаче 695 с обеих сторон.)
+
 - **The app picker shows each app's UID and warns about shared UIDs
   ([task 693](docs/spec/tasks/693-app-picker-shared-uid-hint.md),
   [#180](https://github.com/Leadaxe/LxBox/issues/180)).** Android lets
@@ -80,6 +95,18 @@
   выключены все три, DNS пресета работает как при выключенном тумблере
   DNS. Значения по умолчанию прежние: UDP на 77.88.8.8, DoT и DoH на
   77.88.8.88.)
+
+### Changed
+
+- **Default TUN MTU is 9000 instead of 1492
+  ([task 700](docs/spec/tasks/700-tun-mtu-default-9000.md)).** 9000 is the
+  sing-box default; the tunnel interface is virtual, and the core re-sends TCP
+  at the real network MTU, so a small value only added packets and CPU work.
+  Installs where MTU was never changed get 9000 with the next config build;
+  a value set by hand stays.
+  (RU: MTU tun по умолчанию 9000 вместо 1492 — значение sing-box; у установок,
+  где MTU не меняли, 9000 встанет со следующей сборкой конфига, заданное
+  вручную значение остаётся.)
 
 ### Fixed
 
