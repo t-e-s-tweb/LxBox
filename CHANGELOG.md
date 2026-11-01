@@ -8,44 +8,31 @@
 
 ## [Unreleased]
 
-### Changed
-
-- **Memory limit: Auto no longer sets a threshold
-  ([task 705](docs/spec/tasks/705-memory-limit-auto-off.md)).** The core
-  compares the limit with the memory of the whole app process, which it
-  shares with the interface and the loaded libraries, so a cap sized to the
-  phone's RAM was tripped right at start and only made the garbage collector
-  heat the phone. Auto now leaves the cap off and lets the core watch the
-  system's free memory instead; the Off option is folded into Auto. The
-  200–768 MB presets stay for an explicit choice, and the hint says what the
-  number is compared with. A value chosen earlier is kept as is. With core
-  lx.29 the limit is compared with the core's own memory rather than the
-  whole process; Statistics → Memory shows it as Core memory next to the
-  process RSS.
-
-### Removed
-
-- **The VPN Settings → System switch "Interrupt connections on switch"
-  ([task 143](docs/spec/tasks/143-interrupt-connections-on-node-switch.md)).**
-  It closed a group's connections from the app after a node tap, because the
-  core used to ignore the direction's own checkbox of the same name. The core
-  has dropped those connections itself since 2.20.9, on any switch, so the
-  switch only duplicated the direction checkbox and could override it. If it
-  was on, the update turns the checkbox on in every direction where it was
-  off. The Debug API route `/settings/interrupt_on_switch` is gone; an old
-  backup with this setting still restores.
-  (RU: Убран тумблер «Interrupt connections on switch» в VPN Settings →
-  System. Он закрывал соединения группы из приложения после нажатия узла,
-  потому что ядро раньше не выполняло одноимённую галочку Направления. С
-  2.20.9 ядро рвёт эти соединения само при любой смене узла, и тумблер
-  только дублировал галочку и мог её перекрыть. Если он был включён, при
-  обновлении галочка включается во всех Направлениях, где была снята.
-  Маршрут Debug API `/settings/interrupt_on_switch` убран; старый бэкап с
-  этой настройкой восстанавливается.)
-
 ## [2.25.19] — 2026-11-01
 
 ### Added
+
+- **Mixins: your own additions to the final core config
+  ([task 704](docs/spec/tasks/704-config-mixins.md)).** Config → Mixins
+  keeps operations that are applied at the end of every config build: a
+  target path (`route.rules[action=hijack-dns]`, `inbounds[tag=dns-in]`), a
+  verb (append, prepend, before, after, set, merge, remove) and a JSON value.
+  The form shows whether the target matches and a preview of the result. A
+  mixin survives rebuilds, unlike a manual edit with Lock config, travels in
+  LX Backup and is available through the Debug API (`/mixins`). A mixin that
+  does not apply or adds a duplicate tag stops the build with its name in the
+  message. Example: a `direct` inbound on `127.0.0.1:5354` with a
+  `hijack-dns` rule hands the core's DNS to another app.
+  (RU: Mixins: свои вставки в итоговый конфиг ядра. Config → Mixins хранит
+  операции, которые применяются в конце каждой сборки конфига: путь цели
+  (`route.rules[action=hijack-dns]`, `inbounds[tag=dns-in]`), глагол
+  (append, prepend, before, after, set, merge, remove) и JSON-значение.
+  Форма показывает, находит ли путь цель, и предпросмотр результата. Миксин
+  переживает пересборки, в отличие от ручной правки с Lock config, едет в LX
+  Backup и доступен через Debug API (`/mixins`). Миксин, который не
+  применяется или вносит дубль тега, останавливает сборку с его именем в
+  сообщении. Пример: inbound `direct` на `127.0.0.1:5354` с правилом
+  `hijack-dns` отдаёт DNS ядра другому приложению.)
 
 - **Hosts DNS server in the form, and Hosts in a DNS group
   ([task 699](docs/spec/tasks/699-dns-hosts-server-and-group-overlay.md),
@@ -182,7 +169,19 @@
 
 ### Changed
 
-- **Core `v1.14.4-lx.25` → `v1.14.4-lx.28`
+- **Memory limit is compared with the core's own memory; Auto sets no
+  threshold ([task 705](docs/spec/tasks/705-memory-limit-auto-off.md)).**
+  Until now the core compared the limit with the memory of the whole app
+  process, which it shares with the interface and the loaded libraries: a
+  200 MB cap was tripped right at start and only made the garbage collector
+  heat the phone. With core `v1.14.4-lx.29` the limit applies to the core's
+  Go runtime (on a reporting device: 42 MB of a 461 MB process), and the
+  core keeps watching the system's free memory as well. Auto now leaves the
+  cap off, the Off option is folded into Auto, the 200–768 MB presets stay
+  for an explicit choice, and a value chosen earlier is kept. Statistics →
+  Memory shows the figure as Core memory next to the process RSS, with the
+  limit beside it when a number is chosen.
+- **Core `v1.14.4-lx.25` → `v1.14.4-lx.29`
   ([docs/KERNEL.md](docs/KERNEL.md)).** A DNS group can list `hosts`
   servers that answer the names they know before the group's servers
   (Leadaxe/sing-box-lx#60). MTU alignment fixes: a proxy node inside a group no
@@ -193,8 +192,10 @@
   when a MASQUE node with `detour` is being pinged or connecting at that
   moment; after a stop that did hang, the new core instance takes `cache.db`
   over by itself, keeping group selection, FakeIP and the rule-set cache
-  (Leadaxe/sing-box-lx#61). No config changes.
-  (RU: Ядро `v1.14.4-lx.25` → `v1.14.4-lx.28`. DNS-группа может спрашивать
+  (Leadaxe/sing-box-lx#61). The memory limit can be compared with the core's
+  Go runtime instead of the whole process (Leadaxe/sing-box-lx#62). No config
+  changes.
+  (RU: Ядро `v1.14.4-lx.25` → `v1.14.4-lx.29`. DNS-группа может спрашивать
   серверы `hosts` раньше своих серверов; поправки выравнивания MTU: прокси-узел
   в группе больше не занижает MTU туннеля над группой, туннели с IPv6 не
   опускаются ниже 1280. Статус пира WireGuard/AWG отдаётся по сессиям: после
@@ -202,7 +203,8 @@
   начинаются с нуля. Остановка VPN больше не зависает, если в этот момент
   пингуется или подключается узел MASQUE с `detour`; после зависшей остановки
   новое ядро само забирает `cache.db`, сохраняя выбор узлов, FakeIP и кеш
-  rule-set. Конфиг не меняется.)
+  rule-set. Лимит памяти можно сравнивать с Go-рантаймом ядра, а не со всем
+  процессом. Конфиг не меняется.)
 - **Default TUN MTU is 9000 instead of 1492
   ([task 700](docs/spec/tasks/700-tun-mtu-default-9000.md)).** 9000 is the
   sing-box default; the tunnel interface is virtual, and the core re-sends TCP
@@ -218,6 +220,26 @@
   (RU: Контракт лаунчера 1.1.142 → 1.1.145. `tcp_multi_path` во вставленном
   sing-box узле сохраняется как известное поле диалера, а не снимается как
   неизвестный ключ; ключ `hosts` у DNS-группы общий с лаунчером.)
+
+### Removed
+
+- **The VPN Settings → System switch "Interrupt connections on switch"
+  ([task 143](docs/spec/tasks/143-interrupt-connections-on-node-switch.md)).**
+  It closed a group's connections from the app after a node tap, because the
+  core used to ignore the direction's own checkbox of the same name. The core
+  has dropped those connections itself since 2.20.9, on any switch, so the
+  switch only duplicated the direction checkbox and could override it. If it
+  was on, the update turns the checkbox on in every direction where it was
+  off. The Debug API route `/settings/interrupt_on_switch` is gone; an old
+  backup with this setting still restores.
+  (RU: Убран тумблер «Interrupt connections on switch» в VPN Settings →
+  System. Он закрывал соединения группы из приложения после нажатия узла,
+  потому что ядро раньше не выполняло одноимённую галочку Направления. С
+  2.20.9 ядро рвёт эти соединения само при любой смене узла, и тумблер
+  только дублировал галочку и мог её перекрыть. Если он был включён, при
+  обновлении галочка включается во всех Направлениях, где была снята.
+  Маршрут Debug API `/settings/interrupt_on_switch` убран; старый бэкап с
+  этой настройкой восстанавливается.)
 
 ### Fixed
 
