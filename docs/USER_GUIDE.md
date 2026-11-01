@@ -5,6 +5,9 @@ code — about the logic and the order in which to set things up.
 
 > Русская версия: [USER_GUIDE.ru.md](USER_GUIDE.ru.md)
 
+> For advanced users: [Advanced user guide](ADVANCED_USER_GUIDE.md) — mixins,
+> manual config edits, Debug API.
+
 ## Contents
 
 - [What is what](#what-is-what)
@@ -60,6 +63,7 @@ code — about the logic and the order in which to set things up.
 - [If something goes wrong — where to look](#if-something-goes-wrong--where-to-look)
 - [Speed Test measures speed to a test server over the current route](#speed-test-measures-speed-to-a-test-server-over-the-current-route)
 - [Config Editor edits the core config until the next rebuild](#config-editor-edits-the-core-config-until-the-next-rebuild)
+  - [Mixins keep your edits through rebuilds](#mixins-keep-your-edits-through-rebuilds)
   - [Lock config pins a manual config](#lock-config-pins-a-manual-config)
 - [Recipes](#recipes)
   - [Share the VPN with other devices over Wi-Fi](#share-the-vpn-with-other-devices-over-wi-fi)
@@ -2098,6 +2102,16 @@ without editing and without a size limit: the JSON check and the error are
 the same as for Save. As with Save, Lock config does not block this save; with
 Lock config on, the next rebuild does not overwrite the saved file. The
 screen stays read-only until you open it again.
+
+### Mixins keep your edits through rebuilds
+
+The **Mixins** tab on the Config screen holds stored edits of the built
+config. A mixin is a target path, an action and a JSON value; it is applied as
+the last step of every build, so a rebuild does not lose it, unlike a manual
+edit. Example: `inbounds → append` with a `direct` inbound on
+`127.0.0.1:5354`, plus a `hijack-dns` rule for it, gives other apps a DNS
+listener. The screen step by step, path syntax, actions and examples —
+[Advanced user guide → Mixins](ADVANCED_USER_GUIDE.md#mixins).
 
 ### Lock config pins a manual config
 
