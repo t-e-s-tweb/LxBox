@@ -6283,6 +6283,9 @@
   "no active session (last handshake %s)": {
     "value": "нет активной сессии (последний хендшейк %s)"
   },
+  "no response (last handshake %s)": {
+    "value": "нет ответа (последний хендшейк %s)"
+  },
   "asleep": {
     "value": "спит"
   },
@@ -6782,5 +6785,14 @@
   },
   "DNS group \"%1$s\": hosts accepts only servers of type hosts, got \"%3$s\": \"%2$s\".": {
     "value": "DNS-группа «%1$s»: в hosts допустимы только серверы типа hosts, а «%2$s» — типа «%3$s»."
+  },
+  "Node filter": {
+    "value": "Фильтр узлов"
+  },
+  "%1$s / %2$s match": {
+    "value": "совпало %1$s из %2$s"
+  },
+  "Open picker": {
+    "value": "Открыть подбор"
   }
 }

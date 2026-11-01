@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [2.25.19] — 2026-11-01
+
 ### Added
 
 - **Hosts DNS server in the form, and Hosts in a DNS group
@@ -121,18 +123,51 @@
   DNS. Значения по умолчанию прежние: UDP на 77.88.8.8, DoT и DoH на
   77.88.8.88.)
 
+- **Full-screen node filter picker in the Direction editor
+  ([task 702](docs/spec/tasks/702-direction-node-filter-picker.md)).** A
+  button to the right of Node filter opens a full screen: the regex field
+  with `!`, the emoji found in the node names with a count for each (a tap
+  adds the emoji to the pattern, a second tap removes it), and the whole
+  node list with the matched nodes on top marked ✓ and the rest marked ✗.
+  ✓ in the top bar puts the pattern back into the editor.
+  (RU: Полноэкранный подбор фильтра узлов в редакторе Направления. Кнопка
+  справа от Node filter открывает экран: поле regex с `!`, эмодзи из имён
+  узлов с числом узлов у каждого (тап добавляет эмодзи в паттерн, повторный
+  убирает) и полный список узлов: совпавшие сверху с ✓, остальные с ✗. ✓ в
+  верхней панели возвращает паттерн в редактор.)
+
+- **Debug API: the selected node of every group.** `GET /state` gets
+  `group_selected`: group tag → the node the core has selected, for every
+  selector and urltest group (each Direction and its `-auto` group), not
+  only for the Direction open on the home screen (`active_in_group`).
+  (RU: Debug API: выбранный узел каждой группы. В `GET /state` добавлено
+  поле `group_selected`: тег группы → узел, выбранный ядром, для каждой
+  selector- и urltest-группы (каждое Направление и его `-auto`), а не только
+  для Направления, открытого на главной (`active_in_group`).)
+
 ### Changed
 
-- **Core `v1.14.4-lx.25` → `v1.14.4-lx.26`
+- **Core `v1.14.4-lx.25` → `v1.14.4-lx.28`
   ([docs/KERNEL.md](docs/KERNEL.md)).** A DNS group can list `hosts`
   servers that answer the names they know before the group's servers
   (Leadaxe/sing-box-lx#60). MTU alignment fixes: a proxy node inside a group no
   longer lowers the MTU of a tunnel above the group, and tunnels carrying IPv6
-  are never set below 1280. No config changes.
-  (RU: Ядро `v1.14.4-lx.25` → `v1.14.4-lx.26`. DNS-группа может спрашивать
+  are never set below 1280. WireGuard/AWG peer status is reported per
+  session: after a node is turned on or wakes up, the last handshake and the
+  session byte counters start from zero. Stopping the VPN no longer hangs
+  when a MASQUE node with `detour` is being pinged or connecting at that
+  moment; after a stop that did hang, the new core instance takes `cache.db`
+  over by itself, keeping group selection, FakeIP and the rule-set cache
+  (Leadaxe/sing-box-lx#61). No config changes.
+  (RU: Ядро `v1.14.4-lx.25` → `v1.14.4-lx.28`. DNS-группа может спрашивать
   серверы `hosts` раньше своих серверов; поправки выравнивания MTU: прокси-узел
   в группе больше не занижает MTU туннеля над группой, туннели с IPv6 не
-  опускаются ниже 1280. Конфиг не меняется.)
+  опускаются ниже 1280. Статус пира WireGuard/AWG отдаётся по сессиям: после
+  включения или пробуждения узла последний хендшейк и счётчики байт сессии
+  начинаются с нуля. Остановка VPN больше не зависает, если в этот момент
+  пингуется или подключается узел MASQUE с `detour`; после зависшей остановки
+  новое ядро само забирает `cache.db`, сохраняя выбор узлов, FakeIP и кеш
+  rule-set. Конфиг не меняется.)
 - **Default TUN MTU is 9000 instead of 1492
   ([task 700](docs/spec/tasks/700-tun-mtu-default-9000.md)).** 9000 is the
   sing-box default; the tunnel interface is virtual, and the core re-sends TCP
@@ -142,8 +177,26 @@
   (RU: MTU tun по умолчанию 9000 вместо 1492 — значение sing-box; у установок,
   где MTU не меняли, 9000 встанет со следующей сборкой конфига, заданное
   вручную значение остаётся.)
+- **Launcher contract 1.1.142 → 1.1.145.** `tcp_multi_path` in a pasted
+  sing-box node is kept as a known dialer field instead of being dropped as
+  an unknown key; the DNS group key `hosts` is shared with the launcher.
+  (RU: Контракт лаунчера 1.1.142 → 1.1.145. `tcp_multi_path` во вставленном
+  sing-box узле сохраняется как известное поле диалера, а не снимается как
+  неизвестный ключ; ключ `hosts` у DNS-группы общий с лаунчером.)
 
 ### Fixed
+
+- **Route on the node screen did not follow the selector.** When the
+  selected node of a group on the path changed outside this screen (on the
+  home screen, through the Debug API, or after a urltest reselect), Route
+  kept showing the old pick until the screen was reopened. Route and the
+  checkmark in the member list of a group now update with the core's
+  selection.
+  (RU: Route на экране узла не следил за селектором. Если выбор группы на
+  пути менялся не с этого экрана (на главной, через Debug API, после
+  переселекта urltest), Route показывал старый выбор, пока экран не открыть
+  заново. Теперь Route и галка в списке участников группы обновляются
+  вместе с выбором ядра.)
 
 - **Servers could not be removed from Shield DNS
   ([task 695](docs/spec/tasks/695-dns-disabled-group-holds.md),
@@ -177,6 +230,59 @@
   при запуске: сервер включается, причина пишется в лог приложения.
   Выключенную группу без включённых участников включить нельзя, счётчик
   участников группы считает серверы, которые есть в списке.)
+
+- **A node row jumped in height while nodes were pinged.** The row of a
+  node without a subtitle (`direct`, for example) collapsed and expanded
+  with the ping badge. The row now keeps its height during a ping.
+  (RU: Строка узла прыгала по высоте во время пинга. Строка узла без
+  подзаголовка (например, `direct`) схлопывалась и раскрывалась вместе с
+  бейджем пинга; теперь высота строки во время пинга держится.)
+
+- **A WireGuard/AWG peer showed «connected» when the server did not answer
+  ([task 613](docs/spec/tasks/613-wg-peers-tailscale-path-health.md)).**
+  The peer on the node screen was green while its last handshake was under
+  three minutes old, so two cases looked alive: a new server picked in the
+  group the node goes through that does not pass the traffic, and a node
+  just turned off and on, whose session had been destroyed. Now a peer that
+  sends but gets nothing back for about 8 seconds is orange, «no response».
+  After the node is turned on or wakes up, the peer shows «never connected»
+  until a new handshake, and ↓/↑ count only the current session.
+  (RU: Пир WireGuard/AWG показывал «connected», когда сервер не отвечал.
+  На экране узла пир был зелёным, пока последнему хендшейку меньше трёх
+  минут, поэтому живыми выглядели два случая: новый сервер в группе, через
+  которую идёт узел, не пропускает трафик; узел только что выключили и
+  включили, и его сессия уже уничтожена. Теперь пир, который шлёт, но
+  около 8 секунд ничего не получает в ответ, оранжевый — «no response».
+  После включения или пробуждения узла пир показывает «never connected» до
+  нового хендшейка, а ↓/↑ считают только текущую сессию.)
+
+- **Start failed with «initialize cache-file: timeout»
+  ([task 703](docs/spec/tasks/703-cache-db-lock-timeout-retry.md)).** When
+  the previous core instance hung while shutting down, it still held the
+  cache file, and the next start (also after restoring a backup) waited for
+  it and failed. On this error the app now deletes the cache file and starts
+  once more; the same applies to node checks. What the cache held is lost:
+  FakeIP addresses, the nodes selected in groups, downloaded rule sets (the
+  core fetches them again) and ping history.
+  (RU: Старт падал с «initialize cache-file: timeout». Когда прежний
+  экземпляр ядра зависал при остановке, он продолжал держать файл кэша, и
+  следующий старт (в том числе после восстановления из бэкапа) ждал его и
+  падал. На этой ошибке приложение теперь удаляет файл кэша и запускается
+  ещё раз; то же для проверки узлов. Содержимое кэша теряется: адреса
+  FakeIP, выбранные узлы в группах, скачанные rule set (ядро скачает их
+  заново) и история пингов.)
+
+- **The WARP endpoint picked in the wizard was replaced
+  ([task 386](docs/spec/tasks/386-warp-endpoint-preset-combobox.md)).**
+  Choosing `engage.cloudflareclient.com:2408` in the list was treated as
+  «nothing chosen», and the node got a random endpoint, the address from
+  the Cloudflare response or the one cached from an earlier registration.
+  An explicitly chosen endpoint is now kept.
+  (RU: Выбранный в мастере WARP-эндпоинт подменялся. Выбор
+  `engage.cloudflareclient.com:2408` в списке считался «ничего не выбрано»,
+  и узел получал случайный эндпоинт, адрес из ответа Cloudflare или
+  закешированный с прошлой регистрации. Явно выбранный эндпоинт теперь
+  сохраняется.)
 
 ## [2.25.18] — 2026-10-29
 
