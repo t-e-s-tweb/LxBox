@@ -1340,8 +1340,8 @@
   "Cannot read the selected file": {
     "value": "无法读取所选文件"
   },
-  "Caps the VPN core's memory. A cap that is too low keeps the processor busy with garbage collection and heats the phone. Auto sizes the cap to this device's RAM; Off removes the cap but keeps low-memory monitoring. Applies immediately.": {
-    "value": "限制 VPN 内核的内存占用。上限过低会让处理器忙于垃圾回收并导致手机发热。「自动」按本机内存自动设定；「关闭」取消上限但保留低内存监控。立即生效。"
+  "Memory threshold for the whole app process: the core, the interface and the loaded libraries share it. Above the threshold the core drops its connections and frees memory, and near it the garbage collector keeps the processor busy and heats the phone. Auto sets no threshold; the core watches the system's free memory instead. Applies immediately.": {
+    "value": "整个应用进程的内存阈值：内核、界面和已加载的库共用这一进程。超过阈值时内核会断开自己的连接并释放内存；接近阈值时垃圾回收会占用处理器并导致手机发热。「自动」不设阈值，内核转而监控系统的可用内存。立即生效。"
   },
   "Capture %s": {
     "value": "抓取 %s"
@@ -3052,6 +3052,9 @@
   },
   "Metadata is missing or unreadable.": {
     "value": "元数据缺失或无法读取。"
+  },
+  "Mixin \"%1$s\": %2$s": {
+    "value": "混入「%1$s」：%2$s"
   },
   "Mode": {
     "value": "模式"
@@ -6506,5 +6509,67 @@
   },
   "Open picker": {
     "value": "打开选择器"
+  },
+  "Mixins": {
+    "value": "混入"
+  },
+  "Mixin": {
+    "value": "混入"
+  },
+  "Add mixin": {
+    "value": "添加混入"
+  },
+  "Delete mixin?": {
+    "value": "删除混入？"
+  },
+  "Edits applied to the built config, top to bottom. They survive rebuilds.": {
+    "value": "对生成配置的修改，自上而下应用，重新生成后仍保留。"
+  },
+  "Target": {
+    "value": "目标"
+  },
+  "Whole node": {
+    "value": "整个节点"
+  },
+  "Keys": {
+    "value": "键"
+  },
+  "Keys, comma-separated": {
+    "value": "键，以逗号分隔"
+  },
+  "Preview": {
+    "value": "预览"
+  },
+  "(root)": {
+    "value": "（根）"
+  },
+  "No config built yet": {
+    "value": "尚未生成配置"
+  },
+  "✓ 1 match": {
+    "value": "✓ 1 个匹配"
+  },
+  "✗ no match": {
+    "value": "✗ 无匹配"
+  },
+  "✗ needs a single list": {
+    "value": "✗ 需要单个列表"
+  },
+  "✗ not a list element": {
+    "value": "✗ 不是列表元素"
+  },
+  "✗ syntax: %s": {
+    "value": "✗ 语法：%s"
+  },
+  "%s → before first": {
+    "value": "%s → 第一个之前"
+  },
+  "%s → after last": {
+    "value": "%s → 最后一个之后"
+  },
+  "✓ %d matches": {
+    "value": {
+      "other": "✓ %d 个匹配"
+    }
   }
 }

@@ -1535,8 +1535,8 @@
   "Cannot read the selected file": {
     "value": "Не удалось прочитать выбранный файл"
   },
-  "Caps the VPN core's memory. A cap that is too low keeps the processor busy with garbage collection and heats the phone. Auto sizes the cap to this device's RAM; Off removes the cap but keeps low-memory monitoring. Applies immediately.": {
-    "value": "Ограничивает память ядра VPN. Слишком низкий лимит занимает процессор сборкой мусора и греет телефон. «Авто» подбирает лимит под объём памяти устройства; «Выключено» снимает лимит, но сохраняет контроль нехватки памяти. Применяется сразу."
+  "Memory threshold for the whole app process: the core, the interface and the loaded libraries share it. Above the threshold the core drops its connections and frees memory, and near it the garbage collector keeps the processor busy and heats the phone. Auto sets no threshold; the core watches the system's free memory instead. Applies immediately.": {
+    "value": "Порог памяти для всего процесса приложения: его делят ядро, интерфейс и загруженные библиотеки. Выше порога ядро сбрасывает свои соединения и освобождает память, а вблизи него сборщик мусора занимает процессор и греет телефон. «Авто» порог не ставит: ядро вместо этого следит за свободной памятью системы. Применяется сразу."
   },
   "Capture %s": {
     "value": "Снять %s"
@@ -3301,6 +3301,9 @@
   },
   "Metadata is missing or unreadable.": {
     "value": "Метаданные отсутствуют или не читаются."
+  },
+  "Mixin \"%1$s\": %2$s": {
+    "value": "Миксин «%1$s»: %2$s"
   },
   "Mode": {
     "value": "Режим"
@@ -6794,5 +6797,70 @@
   },
   "Open picker": {
     "value": "Открыть подбор"
+  },
+  "Mixins": {
+    "value": "Миксины"
+  },
+  "Mixin": {
+    "value": "Миксин"
+  },
+  "Add mixin": {
+    "value": "Добавить миксин"
+  },
+  "Delete mixin?": {
+    "value": "Удалить миксин?"
+  },
+  "Edits applied to the built config, top to bottom. They survive rebuilds.": {
+    "value": "Правки собранного конфига, применяются сверху вниз. Переживают пересборку."
+  },
+  "Target": {
+    "value": "Цель"
+  },
+  "Whole node": {
+    "value": "Узел целиком"
+  },
+  "Keys": {
+    "value": "Ключи"
+  },
+  "Keys, comma-separated": {
+    "value": "Ключи через запятую"
+  },
+  "Preview": {
+    "value": "Предпросмотр"
+  },
+  "(root)": {
+    "value": "(корень)"
+  },
+  "No config built yet": {
+    "value": "Конфиг ещё не собран"
+  },
+  "✓ 1 match": {
+    "value": "✓ 1 совпадение"
+  },
+  "✗ no match": {
+    "value": "✗ нет совпадений"
+  },
+  "✗ needs a single list": {
+    "value": "✗ нужен один список"
+  },
+  "✗ not a list element": {
+    "value": "✗ не элемент списка"
+  },
+  "✗ syntax: %s": {
+    "value": "✗ синтаксис: %s"
+  },
+  "%s → before first": {
+    "value": "%s → перед первым"
+  },
+  "%s → after last": {
+    "value": "%s → после последнего"
+  },
+  "✓ %d matches": {
+    "value": {
+      "one": "✓ %d совпадение",
+      "few": "✓ %d совпадения",
+      "many": "✓ %d совпадений",
+      "other": "✓ %d совпадения"
+    }
   }
 }

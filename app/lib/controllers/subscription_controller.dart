@@ -188,6 +188,14 @@ class SubscriptionController extends ChangeNotifier {
   List<ValidationIssue> _lastFatalIssues = const [];
   List<ValidationIssue> get lastFatalIssues => _lastFatalIssues;
 
+  /// §704 — конфиг последней сборки ДО миксинов (в том числе сборки, которую
+  /// отверг fatal миксина). База предпросмотра и автодополнения формы
+  /// миксина и `GET /mixins/{id}/preview`: к ней применяются миксины выше
+  /// по списку (`mixinPreviewBase`). `null` — сборки в этой сессии не было.
+  /// Отказ миксина в [lastFatalIssues] — `MixinIssue` с `mixinId`.
+  Map<String, dynamic>? _lastConfigBeforeMixins;
+  Map<String, dynamic>? get lastConfigBeforeMixins => _lastConfigBeforeMixins;
+
   /// Фича 478 — обратная карта последней сборки «финальный тег → исходный
   /// узел» (PARSING_PRINCIPLES §9.3). Живёт ровно до следующей сборки: страховка
   /// пересобирает конфиг перед каждым кругом и читает карту сразу.
@@ -229,6 +237,12 @@ class SubscriptionController extends ChangeNotifier {
   @visibleForTesting
   void debugSetLastSourceBuildCodes(Map<String, List<RegistryWarning>> map) {
     _lastSourceBuildCodes = map;
+  }
+
+  /// §704 — база предпросмотра миксинов без сборки (тесты Debug API и UI).
+  @visibleForTesting
+  void debugSetLastConfigBeforeMixins(Map<String, dynamic>? config) {
+    _lastConfigBeforeMixins = config;
   }
 
   /// §274 — Направления, чей node_filter отсёк все ноды в последней УСПЕШНОЙ
@@ -3103,6 +3117,8 @@ class SubscriptionController extends ChangeNotifier {
     _lastGroupTagMap = result.groupByEmittedTag;
     _lastBuildWarningsByTag = result.nodeBuildWarningsByEmittedTag;
     _lastSourceBuildCodes = result.sourceBuildCodes;
+    // §704 — до проверки fatal: при отказе миксина форма должна видеть базу.
+    _lastConfigBeforeMixins = result.configBeforeMixins ?? result.config;
 
     // Записываем обратно то, что buildConfig сгенерил (clash_api/secret на
     // первом запуске). GUI не обязано знать про этот механизм — достаточно
