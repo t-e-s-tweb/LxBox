@@ -85,10 +85,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   BackgroundMode _backgroundMode = BackgroundMode.never;
   bool _vpnLoaded = false;
-  // §143/§219 — НЕ native/config-significant: чистая storage-настройка
-  // поведения CommandClient при переключении ноды (selectOutbound +
-  // closeConnection). Без Restart-баннера.
-  bool _interruptOnSwitch = false;
   String _idleSuspend = ''; // §215 — lx.wg.idle_suspend threshold ("" = off)
   // §272 — lx.wg.idle_suspend_reachable ("" = reachable never suspend)
   String _idleSuspendReachable = '';
@@ -168,7 +164,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     // §189 — background_mode читаем из JSON-зеркала native_prefs (истина).
     final bgMode = BackgroundMode.fromNative(
         await SettingsStorage.getNativeBackgroundMode());
-    final interruptOnSwitch = await SettingsStorage.getInterruptOnSwitch();
     final idleSuspend = await SettingsStorage.getIdleSuspend(); // §215
     final idleSuspendReachable =
         await SettingsStorage.getIdleSuspendReachable(); // §272
@@ -178,7 +173,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _template = template;
       _backgroundMode = bgMode;
-      _interruptOnSwitch = interruptOnSwitch;
       _idleSuspend = idleSuspend;
       _idleSuspendReachable = idleSuspendReachable;
       _wgBuildMax = wgBuildMax;
@@ -187,13 +181,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       _vpnLoaded = true;
       _loading = false;
     });
-  }
-
-  // §143 — toggle persist'ится сразу в storage. НЕ config-significant → без
-  // `markConfigChangedNeedRestart` (в отличие от соседних native-туглов, §084 M14).
-  void _toggleInterruptOnSwitch(bool val) {
-    setState(() => _interruptOnSwitch = val);
-    unawaited(SettingsStorage.setInterruptOnSwitch(val));
   }
 
   // §188 — _toggleAllowBypass / _toggleKeepOnExit переехали в vpn_mode_tab.dart.
@@ -395,14 +382,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       children: [
         // §188 — «Allow VPN bypass» и «Keep VPN on exit» переехали в Mode-вкладку
         // (TUN-зависимы → видны только в vpn / vpn_proxy режимах).
-        SwitchListTile(
-          title: Text(getLocalText.s("Interrupt connections on switch")),
-          subtitle: Text(getLocalText.s("Drop active connections when you switch nodes, so traffic moves to the new node immediately")),
-          secondary: const Icon(Icons.swap_horiz),
-          value: _interruptOnSwitch,
-          onChanged: _toggleInterruptOnSwitch,
-        ),
-        const Divider(height: 32),
+        // §143 §9 — тумблер «Interrupt connections on switch» снят: обрыв
+        // соединений при смене узла — галка Направления (ядро, SPEC 064).
         // §272 — секция WireGuard connections: оба idle-suspend порога ядра
         // (lx.wg.idle_suspend / lx.wg.idle_suspend_reachable, SPEC 020).
         const TemplateSectionHeader(
@@ -605,7 +586,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 2),
               Text(
-                getLocalText.s("Memory threshold for the whole app process: the core, the interface and the loaded libraries share it. Above the threshold the core drops its connections and frees memory, and near it the garbage collector keeps the processor busy and heats the phone. Auto sets no threshold; the core watches the system's free memory instead. Applies immediately."),
+                getLocalText.s("Memory threshold for the VPN core itself (its Go runtime), not the whole app process. Above the threshold the core drops its connections and frees memory, and near it the garbage collector keeps the processor busy and heats the phone. Auto sets no threshold. With any value the core also watches the system's free memory. Applies immediately. The current figure is in Statistics → Memory → Core memory."),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),

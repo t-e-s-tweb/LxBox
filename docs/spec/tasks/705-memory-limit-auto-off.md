@@ -98,7 +98,7 @@ Memory limit 200 MB и делает вывод, что лимит не рабо�
   есть в `sing`, но не экспортирован. Это правильный путь, но с бампом
   ядра: в форке сравнивать лимит с `Inuse()` и отдать его в `Status`,
   тогда «Memory limit 200 MB» значит «ядро: GC-цель 160 MiB, сброс при
-  195 MiB хипа», а в Stats появляется «Core runtime: X / 200 MB». Заведено
+  195 MiB хипа», а в Stats появляется «Core memory: X / 200 MB». Заведено
   [sing-box-lx#62](https://github.com/Leadaxe/sing-box-lx/issues/62);
   **контракт с ядром согласован 01.11.2026** (комментарий в issue):
   `Status.MemoryRuntime` (proto 10) = `runtime/metrics` total − released,
@@ -106,9 +106,16 @@ Memory limit 200 MB и делает вывод, что лимит не рабо�
   false, мы ставим true) + lx-поле в `OOMKillerServiceOptions`; в
   heap-режиме Available-watch остаётся; пороги −5/−10 MiB и GC 4/5 не
   меняются; latch через `ReloadSetupOptions` как сейчас; тег lx.29 только с
-  этим (javap +1 геттер) — состав и срок за владельцем. Наша часть после
-  тега: пин, `OomMemoryLimitHeap = true`, строка «Core runtime: X / limit»
-  в шторке Memory. Поправка ядра к нашему тезису: soft limit 160 MiB у
+  этим (javap +1 геттер) — состав и срок за владельцем. **Ядро сделано:
+  SPEC 148, коммит sing-box-lx `0f94afdcc` (01.11.2026), issue #62 закрыт,
+  тега нет.** Сверено по коммиту: `memoryRuntime = 10` в proto,
+  `StatusMessage.MemoryRuntime int64`, `SetupOptions.OomMemoryLimitHeap`,
+  режим `runtime_limit` (`service/oomkiller/runtime_limit_lx.go`).
+  Уточнения ядра: нулевое `memory.Available()` в heap-режиме = неизвестно
+  (условие по available не применяется; на Android из `/proc/meminfo` нуля
+  не бывает); ключа конфига нет, режим только через SetupOptions. Наша
+  часть после тега: пин, `OomMemoryLimitHeap = true`, строка «Core
+  runtime: X / limit» в шторке Memory. Поправка ядра к нашему тезису: soft limit 160 MiB у
   этого пользователя не связывающий (хип 42 MB); нагрев от GC, если есть,
   — оборот аллокаций (пулы 108/16 MB, recvMsg 43 MB), не лимит.
   Rate-trigger на Android не работает (baseline только в
@@ -134,6 +141,53 @@ Memory limit 200 MB и делает вывод, что лимит не рабо�
 
 Wire-протокол §189 не меняется: в prefs по-прежнему `auto` | число;
 `off` принимается на чтении. Debug API/бэкап совместимы.
+
+## Часть 2 — лимит по памяти ядра (ядро v1.14.4-lx.29, SPEC 148)
+
+Владелец 01.11.2026 (передано через сессию ядра): тег lx.29 режется только
+с SPEC 148, «как выйдет ядро — можно внедрять». Контракт в коде ядра
+зафиксирован (`0f94afdcc`), имена не изменятся до тега.
+
+### Что даёт ядро
+
+- `StatusMessage.MemoryRuntime` (int64, байты; Java `getMemoryRuntime()`):
+  память Go-рантайма = `runtime/metrics` `/memory/classes/total:bytes −
+  /memory/classes/heap/released:bytes` — ровно то, чем управляет
+  `SetMemoryLimit`. `Memory` по-прежнему RSS процесса.
+- `SetupOptions.OomMemoryLimitHeap` (bool, дефолт false): при true порог
+  oom-killer сравнивается с `MemoryRuntime`, а не с RSS; слежение за
+  `MemAvailable` при этом остаётся (нулевое `Available` = неизвестно).
+  Пороги −5/−10 MiB и GC-потолок 4/5 без изменений.
+
+### Изменения в приложении
+
+| Файл | Что |
+|---|---|
+| `BoxApplication.kt` (onCreate, `SetupOptions`) и `VpnPlugin.kt` (`setMemoryLimit` → `reloadSetupOptions`) | `oomMemoryLimitHeap = true` рядом с `oomKillerEnabled`; комментарий: порог по памяти рантайма ядра (SPEC 148), не по RSS |
+| `BoxCommandClient.kt` (`writeStatus`, snap) | `snap["memoryRuntime"] = m.getMemoryRuntime()` |
+| `app/lib/vpn/cc_channel.dart` (статус, ~1020) | поле `memoryRuntime: _int(m['memoryRuntime'])` (0, если ключа нет — старое ядро) |
+| `overview_tab.dart` | карточка «LxBox» остаётся RSS процесса (решение §242); в `showMemoryDetailSheet` передаётся `coreRuntime` |
+| `memory_detail_sheet.dart` | в группе Process после `RSS` строка **`Core memory`** = `formatBytes(coreRuntime)` (не «Core runtime»: так уже называется группа горутин и соединений в той же шторке); при пресетном лимите (из `SettingsStorage.getNativeMemoryLimit()`, читается в `initState` рядом с `getMemoryInfo`) — `42.1 MB / 200 MB`; при `auto` — без дроби. Строка скрыта при `coreRuntime == 0`. Подпись строки ниже, стилем `bodySmall`/`onSurfaceVariant`, как подпись у Native heap: «Memory of the VPN core itself (Go runtime); the limit from VPN Settings applies to this figure. RSS is the whole app process.» |
+| `settings_screen.dart` подсказка | переписать: порог по памяти самого ядра VPN (его Go-рантайма), не всего процесса; выше — сброс соединений и освобождение памяти, вблизи — GC греет телефон; Auto порога не ставит; ядро при любом значении следит и за свободной памятью системы; applies immediately. Текущую цифру смотреть в Statistics → Memory → Core memory |
+| `app/assets/l10n/{ru,zh}/ui.json` | новая подсказка, «Core memory», подпись строки |
+| `docs/USER_GUIDE.md`, `.ru.md` | раздел Memory limit: порог по памяти ядра с lx.29; где смотреть; Auto по-прежнему без порога |
+| `docs/STORAGE.md` | комментарий `memory_limit`: threshold on the core's runtime memory (core lx.29+) |
+| `docs/spec/features/012-LIVE_STATE/FUNCTIONS/traffic-statistics.md` | пункт про «Memory = весь процесс»: добавить, что Core memory в шторке — память ядра |
+| `CHANGELOG.md` Unreleased | дополнить запись 705: with core lx.29 the limit is compared with the core's own memory; Statistics → Memory shows Core memory next to process RSS |
+| тесты | разбор статуса (`memoryRuntime`, отсутствие ключа → 0) в тесте cc_channel/box_vpn_client, где уже проверяется `memory`; widget-тест шторки: строка `Core memory` с `/ 200 MB` при пресете и без дроби при `auto`, скрыта при 0 |
+
+Пин ядра (`app/android/libbox.version`, `.libbox.version`,
+`kCoreBuildTagsPin` в `core_chain_capability.dart`, `docs/KERNEL.md` с javap
+и sha256) — отдельным шагом по регламенту после публикации AAR lx.29;
+до этого код против `getMemoryRuntime()` не собирается, поэтому ветка
+исполнителя вливается в develop вместе с пином.
+
+### Проверка части 2
+
+- Эмулятор, лимит 200: лог ядра без `memory threshold reached` на старте;
+  Statistics → Memory → `Core memory ~40 MB / 200 MB`, RSS прежний.
+- Лимит Auto: строка без дроби.
+- У пользователя с WARP-группой — то же на его устройстве (после релиза).
 
 ## Проверка
 
