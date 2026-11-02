@@ -245,8 +245,7 @@ void main() {
         lists: [list],
         template: template,
         settings: const BuildSettings(
-          userVars: {'clash_api': '127.0.0.1:9090'},
-          idleSuspend: '30s',
+          userVars: {'clash_api': '127.0.0.1:9090', 'wg_idle_suspend': '30s', 'wg_lazy_build': 'true'},
         ),
       );
       final wgBlock =
@@ -303,9 +302,7 @@ void main() {
         lists: [list],
         template: template,
         settings: const BuildSettings(
-          userVars: {'clash_api': '127.0.0.1:9090'},
-          idleSuspend: '30s',
-          idleSuspendReachable: '30m',
+          userVars: {'clash_api': '127.0.0.1:9090', 'wg_idle_suspend': '30s', 'wg_idle_suspend_reachable': '30m', 'wg_lazy_build': 'true'},
         ),
       );
       final bothWg = (both.config['lx'] as Map)['wg'] as Map;
@@ -325,14 +322,73 @@ void main() {
         lists: [list],
         template: template,
         settings: const BuildSettings(
-          userVars: {'clash_api': '127.0.0.1:9090'},
-          idleSuspendReachable: '30m',
+          userVars: {'clash_api': '127.0.0.1:9090', 'wg_idle_suspend_reachable': '30m'},
         ),
       );
       expect(orphan.config.containsKey('lx'), false);
       final orphanRoute = orphan.config['route'] as Map;
       expect(orphanRoute.containsKey('lx_idle_suspend'), false);
       expect(orphanRoute.containsKey('lx_idle_suspend_reachable'), false);
+    });
+
+    // §709 — lx.quic_sniff_decoy (ядро SPEC 151): только по тумблеру и
+    // только на ядре, которое знает ключ; рядом с lx.wg, не вместо него.
+    test('§709 quic_sniff_decoy: тумблер, гейт ядра, соседство с lx.wg',
+        () async {
+      final wg = parseLinkAs<WireguardSpec>(
+        'wireguard://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=@wg.example.com:51820?publickey=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=&address=10.0.0.2%2F32&mtu=1420#WG',
+      )!;
+      final list = UserServer(
+        id: 'u709',
+        name: 'WG',
+        enabled: true,
+        tagPrefix: '',
+        detourPolicy: DetourPolicy.defaults,
+        origin: UserSource.paste,
+        nodes: [wg],
+      );
+      Future<Map<String, dynamic>> build(BuildSettings s) async =>
+          (await buildConfig(lists: [list], template: template, settings: s))
+              .config;
+
+      final on = await build(const BuildSettings(
+        userVars: {'clash_api': '127.0.0.1:9090', 'quic_sniff_decoy': 'true', 'wg_idle_suspend': '30s', 'wg_lazy_build': 'true'},
+        coreVersion: '1.14.4-lx.30-rc.3',
+      ));
+      final lx = on['lx'] as Map;
+      expect(lx['quic_sniff_decoy'], true);
+      expect((lx['wg'] as Map)['idle_suspend'], '30s');
+
+      final alone = await build(const BuildSettings(
+        userVars: {'clash_api': '127.0.0.1:9090', 'quic_sniff_decoy': 'true'},
+        coreVersion: '1.14.4-lx.30-rc.3',
+      ));
+      expect(alone['lx'], {'quic_sniff_decoy': true});
+
+      final off = await build(const BuildSettings(
+        userVars: {'clash_api': '127.0.0.1:9090'},
+        coreVersion: '1.14.4-lx.30-rc.3',
+      ));
+      expect(off.containsKey('lx'), false);
+
+      final oldCore = await build(const BuildSettings(
+        userVars: {'clash_api': '127.0.0.1:9090', 'quic_sniff_decoy': 'true'},
+        coreVersion: '1.14.4-lx.30-rc.2',
+      ));
+      expect(oldCore.containsKey('lx'), false);
+
+      // mtu_align: дефолт ядра clamp не пишется, fill/off — строкой.
+      final clamp = await build(const BuildSettings(
+        userVars: {'clash_api': '127.0.0.1:9090', 'mtu_align': 'clamp'},
+      ));
+      expect(clamp.containsKey('lx'), false);
+      for (final mode in const ['fill', 'off']) {
+        final c = await build(BuildSettings(
+          userVars: {'clash_api': '127.0.0.1:9090', 'mtu_align': mode, 'quic_sniff_decoy': 'true'},
+          coreVersion: '1.14.4-lx.30-rc.3',
+        ));
+        expect(c['lx'], {'quic_sniff_decoy': true, 'mtu_align': mode});
+      }
     });
 
     // §536 — lazy_build/build_max едут вместе с базовым порогом, даже когда
@@ -356,8 +412,7 @@ void main() {
         lists: [list],
         template: template,
         settings: const BuildSettings(
-          userVars: {'clash_api': '127.0.0.1:9090'},
-          idleSuspend: '30s',
+          userVars: {'clash_api': '127.0.0.1:9090', 'wg_idle_suspend': '30s', 'wg_lazy_build': 'true'},
         ),
       );
       final wgBlock = (result.config['lx'] as Map)['wg'] as Map;
@@ -387,10 +442,7 @@ void main() {
         lists: [list],
         template: template,
         settings: BuildSettings(
-          userVars: const {'clash_api': '127.0.0.1:9090'},
-          idleSuspend: idle,
-          wgBuildMax: max,
-          wgLazyBuild: lazy,
+          userVars: {'clash_api': '127.0.0.1:9090', 'wg_idle_suspend': idle, 'wg_build_max': '$max', 'wg_lazy_build': '$lazy'},
         ),
       );
     }
