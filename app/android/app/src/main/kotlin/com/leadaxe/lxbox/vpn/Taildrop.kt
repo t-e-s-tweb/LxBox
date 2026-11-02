@@ -127,14 +127,22 @@ object Taildrop {
 
     // ───────────────────────── отправка ─────────────────────────
 
+    /// Итог передачи для [send]: `sent`, `cancelled` или `error` с причиной
+    /// (текст ядра без обёртки gRPC или своя строка).
+    fun interface SendDone {
+        fun onDone(status: String, error: String?)
+    }
+
     /// Запустить передачу [items] пиру [peerId] узла [tag]. `false` — VPN
-    /// не поднят (потоки закрыты, ничего не откладывается).
+    /// не поднят (потоки закрыты, ничего не откладывается). [onDone] — итог
+    /// после уведомления (§707 итер. 5, Debug API ждёт его).
     fun send(
         ctx: Context,
         tag: String,
         peerId: String,
         peerName: String,
         items: List<Item>,
+        onDone: SendDone? = null,
     ): Boolean {
         val cc = BoxService.commandClient
         if (cc == null || items.isEmpty()) {
@@ -145,7 +153,7 @@ object Taildrop {
         val id = SEND_ID_BASE + (nextId.getAndIncrement() and 0xfff)
         val job = SendJob()
         sends[id] = job
-        scope.launch { runSend(app, cc, id, job, tag, peerId, peerName, items) }
+        scope.launch { runSend(app, cc, id, job, tag, peerId, peerName, items, onDone) }
         return true
     }
 
@@ -180,15 +188,21 @@ object Taildrop {
         peerId: String,
         peerName: String,
         items: List<Item>,
+        onDone: SendDone?,
     ) {
+        fun done(status: String, error: String?) {
+            runCatching { onDone?.onDone(status, error) }
+        }
         val total = if (items.all { it.size >= 0 }) items.sumOf { it.size } else -1L
         val notifier = SendNotifier(ctx, id, peerName, items.size, total)
         notifier.progress(0, 0L, force = true)
         val client = cc.newCallClient()
         if (client == null) {
-            notifier.failed(L10n.str(ctx, R.string.taildrop_reason_vpn_off))
+            val reason = L10n.str(ctx, R.string.taildrop_reason_vpn_off)
+            notifier.failed(reason)
             closeAll(items)
             sends.remove(id)
+            done("error", reason)
             return
         }
         val finished = CountDownLatch(1)
@@ -271,14 +285,29 @@ object Taildrop {
             sends.remove(id)
         }
         when {
-            job.cancelled -> notifier.cancel()
-            readError != null -> notifier.failed(readError!!)
-            finished.count > 0L -> notifier.failed(L10n.str(ctx, R.string.taildrop_reason_interrupted))
+            job.cancelled -> {
+                notifier.cancel()
+                done("cancelled", null)
+            }
+            readError != null -> {
+                notifier.failed(readError!!)
+                done("error", readError)
+            }
+            finished.count > 0L -> {
+                val reason = L10n.str(ctx, R.string.taildrop_reason_interrupted)
+                notifier.failed(reason)
+                done("error", reason)
+            }
             finishError.get().isNotEmpty() -> {
                 Log.w(TAG, "taildrop send failed")
-                notifier.failed(failureText(finishError.get()))
+                val reason = failureText(finishError.get())
+                notifier.failed(reason)
+                done("error", reason)
             }
-            else -> notifier.sent()
+            else -> {
+                notifier.sent()
+                done("sent", null)
+            }
         }
     }
 
@@ -409,10 +438,12 @@ object Taildrop {
 
     /// Своё id на каждый файл: ядро шлёт все уведомления Taildrop с одним
     /// typeID, и снятие «receiving» иначе снимало бы и «received».
-    /// Текст отказа ядра для уведомления: без обёртки gomobile/gRPC
-    /// (`taildrop send: rpc error: code = Unknown desc = <текст>` → `<текст>`).
+    /// Текст отказа ядра для уведомления: без обёртки gomobile/gRPC и
+    /// цепочки контекстов Go — последнее звено после `: `
+    /// (`taildrop send: rpc error: code = Unknown desc = <текст>`,
+    /// `taildrop: send <имя>: peer responded 403 Forbidden: <текст>` → `<текст>`).
     internal fun failureText(raw: String): String =
-        raw.substringAfterLast("desc = ").removePrefix("taildrop send: ").trim().ifEmpty { raw }
+        raw.substringAfterLast("desc = ").substringAfterLast(": ").trim().ifEmpty { raw }
 
     fun coreNotificationId(identifier: String): Int =
         5000 + (identifier.hashCode() and 0x3fff)
@@ -491,6 +522,8 @@ object Taildrop {
         val e = prefs(ctx).edit()
         for (t in tags) e.remove(AUTOSAVE_PREFIX + t)
         e.apply()
+        // §707 итер. 4 — и разрешения служебных файлов узлов.
+        TaildropServiceFiles.forgetTags(ctx, tags)
     }
 
     // ─────────────── уведомления приёма: кнопки и сохранение ───────────────
@@ -590,6 +623,38 @@ object Taildrop {
         val id = coreNotificationId(identifier)
         val note = parseCoreNotification(identifier, openUrl)
         val openTag = tagFromOpenUrl(openUrl)
+        // §707 итер. 4 — кандидат в служебные файлы разбирается раньше
+        // автосохранения и уведомления «принят»; обычный — дальше как всегда.
+        val spec = TaildropServiceFiles.spec(app)
+        if (note is CoreNote.Received && spec != null && TaildropServiceFiles.isCandidate(spec, note.name)) {
+            runInBackground {
+                if (!processServiceCandidate(app, note.tag, note.name)) {
+                    deliverReceived(app, id, note, text, openTag)
+                }
+            }
+            return
+        }
+        deliverReceived(app, id, note, text, openTag)
+    }
+
+    /// Служебный ли файл [name] узла [tag] (тогда он разобран и удалён).
+    /// Каталог входящих — из последнего собранного конфига.
+    private fun processServiceCandidate(ctx: Context, tag: String, name: String): Boolean {
+        val dir = taildropDirectories(ConfigManager.load()).firstOrNull { it.first == tag }?.second
+            ?: return false
+        val key = inFlightKey(tag, name)
+        if (!inFlight.add(key)) return true // уже разбирает прогон входящих
+        return try {
+            name in TaildropServiceFiles.process(
+                ctx, tag, listOf(TaildropServiceFiles.Incoming(name, File(dir, name))),
+                viaCore = BoxService.commandClient != null,
+            )
+        } finally {
+            inFlight.remove(key)
+        }
+    }
+
+    private fun deliverReceived(app: Context, id: Int, note: CoreNote?, text: NoteText, openTag: String?) {
         if (note is CoreNote.Received && isAutoSave(app, note.tag)) {
             showCoreNotification(app, id, note, text, openTag, withActions = false)
             runInBackground { saveFromNotification(app, id, note, text) }
@@ -711,6 +776,16 @@ object Taildrop {
     fun save(ctx: Context, tag: String, name: String, target: Uri?): String? =
         saveInternal(ctx, tag, name, target, null)
 
+    /// §707 итер. 5 — [save] в Downloads с именем записи `MediaStore` (оно
+    /// может отличаться: занятое имя получает суффикс). Пара (причина
+    /// неудачи, имя); успех — причина `null`.
+    fun saveToDownloads(ctx: Context, tag: String, name: String): Pair<String?, String?> {
+        val uri = AtomicReference<Uri?>(null)
+        val err = saveInternal(ctx, tag, name, null, uri)
+        val saved = uri.get()
+        return err to saved?.let { displayName(ctx, it) ?: name }
+    }
+
     /// [saved] — куда положить uri записи `MediaStore` (только Downloads).
     private fun saveInternal(
         ctx: Context,
@@ -807,7 +882,6 @@ object Taildrop {
 
     /// Разобрать входящие в фоне (старт процесса, включение переключателя).
     fun sweepInboxesAsync(ctx: Context) {
-        if (!autoSaveSupported()) return
         if (!sweepQueued.compareAndSet(false, true)) return
         val app = ctx.applicationContext
         scope.launch {
@@ -826,7 +900,6 @@ object Taildrop {
     /// Разобрать входящие из старта VPN — до старта ядра, после переноса
     /// старой общей папки. Блокирующий — звать с IO.
     fun sweepInboxesBeforeCoreStart(ctx: Context) {
-        if (!autoSaveSupported()) return
         synchronized(sweepLock) { sweepLocked(ctx.applicationContext, beforeCoreStart = true) }
     }
 
@@ -836,10 +909,29 @@ object Taildrop {
     /// диском); ядра нет — прямо с диска. Ядро поднимается или гаснет, а
     /// прогон не из старта VPN, — ничего: старт VPN разберёт сам.
     private fun sweepLocked(ctx: Context, beforeCoreStart: Boolean) {
-        val inboxes = taildropDirectories(ConfigManager.load()).filter { isAutoSave(ctx, it.first) }
-        if (inboxes.isEmpty()) return
+        val all = taildropDirectories(ConfigManager.load())
+        if (all.isEmpty()) return
         val viaCore = BoxService.commandClient != null
         if (!viaCore && !beforeCoreStart && BoxVpnService.currentStatus != VpnStatus.Stopped) return
+        // §707 итер. 4 — служебные файлы раньше автосохранения, у всех узлов
+        // с включённым Taildrop. Ядра нет — отправителя нет, разрешение не
+        // находится (§5): команды не выполняются, файл удаляется.
+        val service = HashSet<String>()
+        for ((tag, dir) in all) {
+            val items = readyFiles(File(dir)).mapNotNull { f ->
+                if (inFlight.add(inFlightKey(tag, f.name))) TaildropServiceFiles.Incoming(f.name, f) else null
+            }
+            try {
+                runCatching { TaildropServiceFiles.process(ctx, tag, items, viaCore) }
+                    .onSuccess { names -> names.forEach { service.add(inFlightKey(tag, it)) } }
+                    .onFailure { Log.w(TAG, "taildrop service files failed: ${it.javaClass.simpleName}") }
+            } finally {
+                for (i in items) inFlight.remove(inFlightKey(tag, i.name))
+            }
+        }
+        if (!autoSaveSupported()) return
+        val inboxes = all.filter { isAutoSave(ctx, it.first) }
+        if (inboxes.isEmpty()) return
         var saved = 0
         var failed = 0
         var lastSaved: Triple<String, Uri, String>? = null
@@ -847,6 +939,7 @@ object Taildrop {
         for ((tag, dir) in inboxes) {
             for (f in readyFiles(File(dir))) {
                 val key = inFlightKey(tag, f.name)
+                if (key in service) continue
                 if (!inFlight.add(key)) continue
                 try {
                     // Ушёл, пока ждали очереди (Save на вкладке, автосохранение).
@@ -931,13 +1024,28 @@ object Taildrop {
         }
     }
 
+    /// §707 итер. 4 — теги узлов `tailscale` конфига с `disable_taildrop: true`.
+    internal fun taildropOffTags(configJson: String): Set<String> = runCatching {
+        val eps = JSONObject(configJson).optJSONArray("endpoints") ?: return emptySet()
+        val out = HashSet<String>()
+        for (i in 0 until eps.length()) {
+            val ep = eps.optJSONObject(i) ?: continue
+            if (ep.optString("type") != "tailscale") continue
+            if (ep.optBoolean("disable_taildrop", false)) out.add(ep.optString("tag"))
+        }
+        out
+    }.getOrDefault(emptySet())
+
     /// Пары (тег, `taildrop_directory`) endpoint'ов `tailscale` конфига.
+    /// §707 итер. 4 — узлы с `disable_taildrop: true` не входят: разбор
+    /// входящих и автосохранение их не трогают.
     internal fun taildropDirectories(configJson: String): List<Pair<String, String>> = runCatching {
         val eps = JSONObject(configJson).optJSONArray("endpoints") ?: return emptyList()
         val out = ArrayList<Pair<String, String>>()
         for (i in 0 until eps.length()) {
             val ep = eps.optJSONObject(i) ?: continue
             if (ep.optString("type") != "tailscale") continue
+            if (ep.optBoolean("disable_taildrop", false)) continue
             val tag = ep.optString("tag")
             val dir = ep.optString("taildrop_directory")
             if (tag.isNotEmpty() && dir.isNotEmpty()) out.add(tag to dir)
