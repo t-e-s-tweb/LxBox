@@ -5961,8 +5961,8 @@
   "The running config has no node %s.": {
     "value": "В работающем конфиге нет узла %s."
   },
-  "Only WireGuard and AmneziaWG nodes can be turned off.": {
-    "value": "Выключить можно только узлы WireGuard и AmneziaWG."
+  "Only WireGuard, AmneziaWG and Tailscale nodes can be turned off.": {
+    "value": "Выключить можно только узлы WireGuard, AmneziaWG и Tailscale."
   },
   "VPN is not running or is restarting. Try again.": {
     "value": "VPN не запущен или перезапускается. Повторите попытку."
@@ -6868,5 +6868,74 @@
       "many": "✓ %d совпадений",
       "other": "✓ %d совпадения"
     }
+  },
+  "Replace key": {
+    "value": "Заменить ключ"
+  },
+  "Saved: %s": {
+    "value": "Записано: %s"
+  },
+  "Key saved. It applies when the VPN starts.": {
+    "value": "Ключ сохранён. Он применится при запуске VPN."
+  },
+  "Applies when the node is online.": {
+    "value": "Применится, когда узел будет в сети."
+  },
+  "Signing in with the new key…": {
+    "value": "Вход с новым ключом…"
+  },
+  "Send file…": {
+    "value": "Отправить файл…"
+  },
+  "Sending to %s": {
+    "value": "Отправка на %s"
+  },
+  "Couldn't send: %s": {
+    "value": "Не удалось отправить: %s"
+  },
+  "the VPN is off": {
+    "value": "VPN выключен"
+  },
+  "can't read the file": {
+    "value": "не удалось прочитать файл"
+  },
+  "no file picker on this device": {
+    "value": "на устройстве нет выбора файлов"
+  },
+  "Inbox": {
+    "value": "Входящие"
+  },
+  "File sharing is off for this tailnet. Turn on Taildrop in the Tailscale admin console.": {
+    "value": "В этой сети tailnet обмен файлами выключен. Включите Taildrop в админке Tailscale."
+  },
+  "%s of %s": {
+    "value": "%s из %s"
+  },
+  "from %s": {
+    "value": "от %s"
+  },
+  "Saved to Downloads": {
+    "value": "Сохранено в Загрузки"
+  },
+  "Couldn't save: %s": {
+    "value": "Не удалось сохранить: %s"
+  },
+  "Couldn't delete: %s": {
+    "value": "Не удалось удалить: %s"
+  },
+  "Couldn't cancel: %s": {
+    "value": "Не удалось отменить: %s"
+  },
+  "Turn the node on first.": {
+    "value": "Сначала включите узел."
+  },
+  "Could not sign in with the new key.": {
+    "value": "Не удалось войти с новым ключом."
+  },
+  "Restart node": {
+    "value": "Перезапустить узел"
+  },
+  "Node restarted.": {
+    "value": "Узел перезапущен."
   }
 }

@@ -8,6 +8,33 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Taildrop: send and receive files over a Tailscale node
+  ([task 707](docs/spec/tasks/707-taildrop-send-receive-files.md)).** L×Box
+  is now a Share target: files (or text, sent as a `note-…txt` file) go to one
+  of your online devices in the tailnet, with progress and Cancel in a
+  notification. The device menu on the Network tab has "Send file…". Received
+  files land in each node's own inbox and are listed in a new Inbox block on
+  the Network tab with Save (to Downloads) and Delete; tapping a receive
+  notification opens that node's Network tab. Files the core had already
+  received into its shared folder move to the first Tailscale node once.
+- **Tailscale node on/off and restart on the fly
+  ([task 706](docs/spec/tasks/706-tailscale-network-tab-logged-out.md)).**
+  The Network tab has a Node enabled switch and Restart node; Turn off / Turn
+  on in the node list now works for Tailscale nodes too.
+
+### Fixed
+
+- **Tailscale Network tab of a signed-out node could erase the saved exit
+  node ([task 706](docs/spec/tasks/706-tailscale-network-tab-logged-out.md)).**
+  Offline, the tab compared the recorded `exit_node` with an exit the core did
+  not have and offered Save choice, which wrote None. Outside Running the tab
+  now shows the saved exit node as a line, hides "signed in with a key" and
+  the placeholder name `localhost`, and offers Replace key: the new auth key
+  is written into the node and the node signs in with it without restarting
+  the VPN.
+
 ## [2.25.19] — 2026-11-01
 
 ### Added
