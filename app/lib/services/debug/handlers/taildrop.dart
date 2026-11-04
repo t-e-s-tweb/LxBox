@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -7,10 +6,12 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../../models/node_spec.dart';
+import '../../../models/server_list.dart' show NodeRecordFlag;
 import '../../../screens/node_settings/exit_node_store.dart';
 import '../../../vpn/cc_channel.dart';
 import '../../builder/taildrop_emit.dart' show taildropAllowedByBody;
 import '../../tag_resolver.dart';
+import '../../taildrop_tags_sync.dart';
 import '../context.dart';
 import '../contract/errors.dart';
 import '../transport/request.dart';
@@ -31,8 +32,8 @@ import '_shared.dart';
 /// - `GET  /taildrop/inbox?tag=` — входящие узла (принятые и принимаемые)
 /// - `POST /taildrop/send` — отправка файла / заметки / служебного файла
 /// - `POST /taildrop/inbox/save|delete|cancel` — как Save / Delete / Cancel
-/// - `PUT  /taildrop/settings` — автосохранение, галка «Allow Taildrop»
-/// - `PUT  /taildrop/permissions` — разрешение вида команды от устройства
+/// - `PUT  /taildrop/settings` — поля записи узла `disable_taildrop_autosave` /
+///   `disable_taildrop_commands`, галка «Allow Taildrop»
 /// - `GET  /taildrop/service-files` — счётчики разбора служебных файлов
 Future<DebugResponse> taildropHandler(
     DebugRequest req, DebugContext ctx) async {
@@ -54,8 +55,6 @@ Future<DebugResponse> taildropHandler(
       return _inboxCancel(req, ctx, a);
     case ('PUT', '/taildrop/settings'):
       return _settings(req, ctx, a);
-    case ('PUT', '/taildrop/permissions'):
-      return _permissions(req, ctx, a);
     case ('GET', '/taildrop/service-files'):
       return _serviceFiles(req, a);
   }
@@ -74,7 +73,6 @@ const _paths = {
   '/taildrop/inbox/delete',
   '/taildrop/inbox/cancel',
   '/taildrop/settings',
-  '/taildrop/permissions',
   '/taildrop/service-files',
 };
 
@@ -135,11 +133,39 @@ class TaildropDebugActions {
   Future<CcTailscaleStatus?> status(String tag) async =>
       (await CcChannel.instance.getTailscaleStatus(tag)).status;
 
-  Future<CcTaildropAutoSave?> autoSave(String tag) =>
-      CcChannel.instance.taildropAutoSave(tag);
+  /// §707 итер. 9 — настройки Taildrop записи узла [tag] в смысле
+  /// «включено» (в записи хранится выключение, контракт 1.1.159); `null` — у
+  /// узла нет своей записи (подписка) или он не найден.
+  ({bool commands, bool autosave})? recordFlags(DebugContext ctx, String tag) {
+    final sub = ctx.sub;
+    if (sub == null) return null;
+    final r = taildropRecordForTag(
+        tag, [for (final e in sub.entries) e.list],
+        emitted: sub.lastEmittedTagMap);
+    return r == null
+        ? null
+        : (commands: !r.commandsOff, autosave: !r.autosaveOff);
+  }
 
-  Future<bool> setAutoSave(String tag, bool enabled) =>
-      CcChannel.instance.setTaildropAutoSave(tag, enabled);
+  /// Поле записи узла [tag] тем же путём, что вкладка Network
+  /// (`setNodeRecordFlag`: запись, пуш тегов в зеркало); [value] — в знаке
+  /// поля (`true` = выключено). `null` — записано.
+  Future<String?> setRecordFlag(
+      DebugContext ctx, String tag, NodeRecordFlag flag, bool value) async {
+    final sub = ctx.requireSub();
+    final r = taildropRecordForTag(
+        tag, [for (final e in sub.entries) e.list],
+        emitted: sub.lastEmittedTagMap);
+    if (r == null) {
+      throw const Conflict('the node has no own record (subscription node); '
+          'Taildrop options are kept on own servers and folder members');
+    }
+    final err =
+        await sub.setNodeRecordFlag(r.entryIndex, r.memberIndex, flag, value);
+    return err?.render();
+  }
+
+  Future<bool> autoSaveSupported() => taildropAutosaveSupported();
 
   Future<CcTaildropInbox?> inbox(String tag) =>
       CcChannel.instance.taildropInboxSnapshot(tag);
@@ -153,13 +179,6 @@ class TaildropDebugActions {
   Future<String?> cancelReceiving(String tag, String senderId, String name) =>
       CcChannel.instance.taildropCancelReceiving(tag, senderId, name);
 
-  Future<Map<String, bool>?> permissions(String tag, String peerId) =>
-      CcChannel.instance.taildropPermissions(tag, peerId);
-
-  Future<bool> setPermission(String tag, String peerId, String peerName,
-          String kind, bool allowed) =>
-      CcChannel.instance
-          .setTaildropPermission(tag, peerId, peerName, kind, allowed);
 
   Future<CcTaildropResult> send(
     String tag,
@@ -183,7 +202,13 @@ class TaildropDebugActions {
     return (root['service_files'] as Map).cast<String, dynamic>();
   }
 
-  Random random() => Random.secure();
+  /// §707 итер. 7 — служебный файл собирает натив; `null` — канала нет.
+  Future<CcServiceFile?> buildServiceFile(List<Object?> commands) =>
+      CcChannel.instance.taildropBuildServiceFile(commands);
+
+  /// §707 итер. 7 — получатель окна «Send clipboard» и ленты.
+  Future<Map<String, dynamic>?> clipState() =>
+      CcChannel.instance.taildropClipState();
 }
 
 // ─────────────────────────────── узлы ───────────────────────────────
@@ -216,7 +241,7 @@ Future<DebugResponse> _nodes(
   final out = <Map<String, Object?>>[];
   for (final MapEntry(key: tag, value: built) in nodes.entries) {
     final body = a.nodeBody(ctx, tag);
-    final auto = await a.autoSave(tag);
+    final rec = a.recordFlags(ctx, tag);
     CcTailscaleStatus? st;
     CcTaildropInbox? inbox;
     if (up) {
@@ -229,14 +254,40 @@ Future<DebugResponse> _nodes(
       'disable_taildrop': built['disable_taildrop'],
       'backend_state': st?.backendState,
       'can_share_files': st?.canShareFiles,
-      'autosave': auto?.enabled,
-      'autosave_supported': auto?.supported,
+      'autosave': rec?.autosave,
+      'commands': rec?.commands,
+      'autosave_supported': await a.autoSaveSupported(),
       'inbox_files': inbox?.files.length,
       'receiving': inbox?.receiving.length,
       'self_id': st?.self?.stableId,
     });
   }
-  return JsonResponse({'tunnel_up': up, 'nodes': out});
+  // §707 итер. 7 — окно «Send clipboard»: получатель (имя — с reveal) и
+  // число сообщений лент; текст сообщений не отдаётся.
+  final clip = await a.clipState();
+  final target = clip?['target'];
+  final feeds = clip?['feeds'];
+  return JsonResponse({
+    'tunnel_up': up,
+    'nodes': out,
+    'clip_target': target is Map
+        ? {
+            'tag': target['tag'],
+            'peer_id': target['peer_id'],
+            if (req.qBool('reveal')) 'name': target['name'],
+          }
+        : null,
+    'clip_feeds': [
+      if (feeds is List)
+        for (final f in feeds)
+          if (f is Map)
+            {
+              'tag': f['tag'],
+              'peer_id': f['peer_id'],
+              'messages': f['messages'],
+            },
+    ],
+  });
 }
 
 /// Тег узла из запроса: есть в конфиге, иначе 404. Без префикса источника
@@ -293,16 +344,12 @@ Future<DebugResponse> _peers(
   final reveal = req.qBool('reveal');
   final out = <Map<String, Object?>>[];
   for (final p in st.peers) {
-    final perms = p.stableId.isEmpty
-        ? const <String, bool>{}
-        : await a.permissions(tag, p.stableId) ?? const <String, bool>{};
     out.add({
       'id': p.stableId,
       'os': p.os,
       'online': p.online,
       'can_receive_files': p.canReceiveFiles,
       'sharee': p.shareeNode,
-      'permissions': perms,
       if (reveal) 'name': p.hostName,
     });
   }
@@ -466,10 +513,25 @@ Future<DebugResponse> _send(
     if (cmds is! List || cmds.isEmpty) {
       throw const BadRequest('field "commands" must be a non-empty array');
     }
-    final file = buildServiceFile(await a.serviceFilesRegistry(), cmds,
-        now: ctx.now(), random: a.random());
+    // §707 итер. 7 — собирает натив (формат один с окном «Send clipboard»);
+    // команды не проверяются (Debug API шлёт и битые — проверять разбор
+    // получателя), предел max_bytes — проверяется, как у отправителя (§7).
+    final file = await a.buildServiceFile(cmds);
+    if (file == null) throw const Conflict('native channel not available');
+    switch (file.error) {
+      case '':
+        break;
+      case 'too_large':
+        throw BadRequest('service file is ${file.size} bytes, '
+            'over max_bytes ${file.maxBytes}');
+      default:
+        throw InternalError('service file not built: ${file.error}');
+    }
     name = file.name;
     bytes = file.bytes;
+    if (name.isEmpty || bytes == null) {
+      throw const InternalError('service file not built');
+    }
   }
   _requireTunnel(ctx, a);
   final st = await _requireStatus(a, tag);
@@ -499,60 +561,6 @@ Future<DebugResponse> _send(
   }
 }
 
-/// Служебный файл по SERVICE_FILES.md §2–§3: имя
-/// `<name_prefix><время><-метка><name_suffix>`, тело `{"lx", "commands"}`.
-/// Константы — из реестра [spec]. Команды не проверяются (Debug API шлёт и
-/// битые — проверять разбор получателя); предел `max_bytes` — проверяется,
-/// как у отправителя (§7).
-@visibleForTesting
-({String name, Uint8List bytes}) buildServiceFile(
-  Map<String, dynamic> spec,
-  List<Object?> commands, {
-  required DateTime now,
-  required Random random,
-}) {
-  Object? value(String key) {
-    final v = spec[key];
-    return v is Map ? v['value'] : null;
-  }
-
-  final prefix = value('name_prefix');
-  final suffix = value('name_suffix');
-  final format = value('name_time_format');
-  final labelLen = value('name_label_length');
-  final maxBytes = value('max_bytes');
-  final versions = value('versions');
-  if (prefix is! String ||
-      suffix is! String ||
-      labelLen is! int ||
-      maxBytes is! int ||
-      versions is! List ||
-      versions.isEmpty) {
-    throw const InternalError('service_files registry has unexpected shape');
-  }
-  if (format != 'YYYYMMDDTHHMMSSZ') {
-    throw InternalError('unsupported name_time_format: $format');
-  }
-  final t = now.toUtc();
-  String two(int v) => v.toString().padLeft(2, '0');
-  final stamp = '${t.year.toString().padLeft(4, '0')}${two(t.month)}'
-      '${two(t.day)}T${two(t.hour)}${two(t.minute)}${two(t.second)}Z';
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  final label = String.fromCharCodes([
-    for (var i = 0; i < labelLen; i++)
-      alphabet.codeUnitAt(random.nextInt(alphabet.length)),
-  ]);
-  final bytes = utf8.encode(jsonEncode({
-    'lx': versions.last,
-    'commands': commands,
-  }));
-  if (bytes.length > maxBytes) {
-    throw BadRequest('service file is ${bytes.length} bytes, '
-        'over max_bytes $maxBytes');
-  }
-  return (name: '$prefix$stamp-$label$suffix', bytes: bytes);
-}
-
 // ──────────────────────────── настройки ────────────────────────────
 
 Future<DebugResponse> _settings(
@@ -560,9 +568,11 @@ Future<DebugResponse> _settings(
   final body = req.jsonBodyAsMap();
   final tag = _requireNode(ctx, a, fieldString(body, 'tag'));
   final autosave = fieldBool(body, 'autosave');
+  final commands = fieldBool(body, 'commands');
   final allow = fieldBool(body, 'allow');
-  if (autosave == null && allow == null) {
-    throw const BadRequest('at least one of "autosave", "allow" required');
+  if (autosave == null && commands == null && allow == null) {
+    throw const BadRequest(
+        'at least one of "autosave", "commands", "allow" required');
   }
   final out = <String, Object?>{
     'ok': true,
@@ -570,15 +580,20 @@ Future<DebugResponse> _settings(
     'tag': tag,
   };
   if (autosave != null) {
-    final cur = await a.autoSave(tag);
-    if (cur == null) throw const Conflict('native channel not available');
-    if (autosave && !cur.supported) {
+    if (autosave && !await a.autoSaveSupported()) {
       throw const Conflict('saving to Downloads needs Android 10 or later');
     }
-    if (!await a.setAutoSave(tag, autosave)) {
-      throw const Conflict('autosave not written');
-    }
+    // «Включено» в запросе → поле выключения в записи.
+    final err = await a.setRecordFlag(
+        ctx, tag, NodeRecordFlag.disableTaildropAutosave, !autosave);
+    if (err != null) throw Conflict(err);
     out['autosave'] = autosave;
+  }
+  if (commands != null) {
+    final err = await a.setRecordFlag(
+        ctx, tag, NodeRecordFlag.disableTaildropCommands, !commands);
+    if (err != null) throw Conflict(err);
+    out['commands'] = commands;
   }
   if (allow != null) {
     final err = await a.setAllow(ctx, tag, allow);
@@ -589,35 +604,6 @@ Future<DebugResponse> _settings(
     out.addAll(await maybeRebuild(req, ctx));
   }
   return JsonResponse(out);
-}
-
-Future<DebugResponse> _permissions(
-    DebugRequest req, DebugContext ctx, TaildropDebugActions a) async {
-  final body = req.jsonBodyAsMap();
-  final tag = _requireNode(ctx, a, fieldString(body, 'tag'));
-  final kind = (fieldString(body, 'kind') ?? '').trim();
-  final enabled = fieldBool(body, 'enabled');
-  if (kind.isEmpty) throw const BadRequest('field "kind" required');
-  if (enabled == null) throw const BadRequest('field "enabled" required');
-  final kinds = (await a.serviceFilesRegistry())['kinds'];
-  if (kinds is! Map || !kinds.containsKey(kind)) {
-    throw BadRequest('field "kind" must be one of '
-        '${kinds is Map ? kinds.keys.join(', ') : '(none)'}');
-  }
-  _requireTunnel(ctx, a);
-  final st = await _requireStatus(a, tag);
-  final peer = _findPeer(st, fieldString(body, 'peer') ?? '');
-  if (peer.stableId.isEmpty) throw const Conflict('peer has no stable ID');
-  if (!await a.setPermission(tag, peer.stableId, peer.hostName, kind, enabled)) {
-    throw const Conflict('permission not written');
-  }
-  return JsonResponse({
-    'ok': true,
-    'action': 'taildrop-permission',
-    'tag': tag,
-    'peer_id': peer.stableId,
-    'permissions': await a.permissions(tag, peer.stableId),
-  });
 }
 
 // ───────────────────────── служебные файлы ─────────────────────────

@@ -29,6 +29,7 @@ import 'selectable_to_custom.dart';
 import 'settings_storage_keys.dart';
 import 'storage_migration/migrate_storage.dart';
 import 'subscription/http_cache.dart';
+import 'taildrop_tags_sync.dart' show pushTaildropTags;
 import 'template_loader.dart';
 import 'warp/masque_account.dart';
 import 'warp/warp_account.dart';
@@ -1224,11 +1225,26 @@ class SettingsStorage {
   static Future<String> getNativeMemoryLimit() => _getNativeMemoryLimit();
   static Future<void> setNativeMemoryLimit(String wireValue) =>
       _setNativeMemoryLimit(wireValue);
+  // §707 итер. 9 — тема приложения (AppThemeModeSetting): только JSON.
+  static Future<String> getNativeThemeMode() => _getNativeThemeMode();
+  static Future<void> setNativeThemeMode(String value) =>
+      _setNativeThemeMode(value);
+  static Future<bool> hasNativeThemeMode() => _hasNativeThemeMode();
 
   /// Старт: bootstrap (первый запуск §189 — seed native⇒JSON) или sync
   /// (JSON⇒native). Зовётся из app init до UI.
-  static Future<void> bootstrapAndSyncNativePrefs() =>
-      _bootstrapAndSyncNativePrefs();
+  static Future<void> bootstrapAndSyncNativePrefs() async {
+    await _bootstrapAndSyncNativePrefs();
+    nativePrefsGeneration.value++;
+  }
+
+  /// §707 итер. 9 — поколение секции `native_prefs`: растёт после импорта
+  /// бэкапа ([applyNativePrefsBackup]) и после пересинка на старте или при
+  /// смене Workspaces ([bootstrapAndSyncNativePrefs]). Слушатели, живущие в
+  /// памяти (тема в `ThemeNotifier`), перечитывают хранилище по нему, а не
+  /// по перезапуску. Обычные сеттеры поколение не трогают: их вызывает тот
+  /// же экран, что и держит значение.
+  static final ValueNotifier<int> nativePrefsGeneration = ValueNotifier<int>(0);
 
   /// §189 — единая сериализация backup-блока vpn_settings (состав/дефолты/типы
   /// в одном месте). backup_service и Debug-handler делегируют сюда.
@@ -1238,11 +1254,14 @@ class SettingsStorage {
   /// §633 — [onlyMissing]: Merge — применяются только ключи, которых нет в
   /// зеркале `native_prefs` получателя; прочие отдаются в [onKept].
   static Future<int> applyNativePrefsBackup(Map<String, dynamic> data,
-          {void Function(String, Object)? onError,
-          bool onlyMissing = false,
-          void Function(String key)? onKept}) =>
-      _applyFromBackupMap(data,
-          onError: onError, onlyMissing: onlyMissing, onKept: onKept);
+      {void Function(String, Object)? onError,
+      bool onlyMissing = false,
+      void Function(String key)? onKept}) async {
+    final n = await _applyFromBackupMap(data,
+        onError: onError, onlyMissing: onlyMissing, onKept: onKept);
+    nativePrefsGeneration.value++;
+    return n;
+  }
 
   /// §192 — зеркалить has_tun (производное от vpn_mode) в native. Гейтит
   /// VpnService.prepare(). Зовётся при смене режима в Mode-вкладке.

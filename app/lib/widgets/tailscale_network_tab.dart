@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,7 +10,9 @@ import '../services/debug/debug_registry.dart';
 import '../services/builder/taildrop_emit.dart' show taildropAllowedByBody;
 import '../services/format_utils.dart' show formatBytes;
 import '../services/l10n/locale_controller.dart';
+import '../models/server_list.dart' show NodeRecordFlag;
 import '../services/tailscale_network.dart';
+import '../services/taildrop_tags_sync.dart' show taildropAutosaveSupported;
 import '../services/url_launcher.dart';
 import '../services/wg_peer_status.dart' show wgAgeLabel;
 import '../vpn/box_vpn_client.dart';
@@ -58,24 +61,9 @@ class TailscaleNetworkActions {
   Future<String?> cancelReceiving(String tag, String senderId, String name) =>
       CcChannel.instance.taildropCancelReceiving(tag, senderId, name);
 
-  /// §707 итер. 2 — автосохранение принятого в Downloads: настройка
-  /// устройства по тегу узла, не тело узла. `null` — настройки нет (канал
-  /// недоступен).
-  Future<CcTaildropAutoSave?> getAutoSave(String tag) =>
-      CcChannel.instance.taildropAutoSave(tag);
-
-  Future<bool> setAutoSave(String tag, bool enabled) =>
-      CcChannel.instance.setTaildropAutoSave(tag, enabled);
-
-  /// §707 итер. 4 — разрешения служебных файлов от устройства [peerId]:
-  /// вид команды → разрешено. `null` — канала нет.
-  Future<Map<String, bool>?> getPermissions(String tag, String peerId) =>
-      CcChannel.instance.taildropPermissions(tag, peerId);
-
-  Future<bool> setPermission(String tag, CcTailscalePeer peer, String kind,
-          bool allowed) =>
-      CcChannel.instance.setTaildropPermission(
-          tag, peer.stableId, peer.hostName, kind, allowed);
+  /// §707 итер. 9 — сохранение в Downloads без разрешений есть только на
+  /// Android 10+.
+  Future<bool> autoSaveSupported() => taildropAutosaveSupported();
 
   /// §707 — системный выбор файлов и отправка пиру (передача — в нативе).
   Future<CcTaildropResult> sendFiles(String tag, CcTailscalePeer peer) =>
@@ -159,6 +147,8 @@ class TailscaleNetworkTab extends StatefulWidget {
     required this.body,
     this.onSaveExitNode,
     this.onSaveFields,
+    this.taildropFlags,
+    this.onSaveRecordFlag,
     this.statusSource,
     this.inboxSource,
     this.vpnUp,
@@ -174,6 +164,17 @@ class TailscaleNetworkTab extends StatefulWidget {
   /// Replace key (§706) нет (узел подписки; блок Settings тогда только с
   /// автосохранением Taildrop, §707). `true` — записано.
   final Future<bool> Function(Map<String, Object?> fields)? onSaveFields;
+
+  /// §707 итер. 9 (контракт 1.1.159) — поля записи узла
+  /// `disable_taildrop_commands` / `disable_taildrop_autosave` в знаке
+  /// хранилища (`true` = выключено); переключатели показывают обратное.
+  /// `null` — у узла нет своей записи (подписка), и переключателей нет.
+  final ({bool commandsOff, bool autosaveOff})? taildropFlags;
+
+  /// Запись поля записи узла (тем же путём, что прочие поля записи на
+  /// экране узла), значение — в знаке поля. `true` — записано.
+  final Future<bool> Function(NodeRecordFlag flag, bool value)?
+      onSaveRecordFlag;
 
   /// Тесты: поток состояния вместо [CcChannel.tailscaleStatus] (подписка ядра
   /// тогда не поднимается).
@@ -228,6 +229,11 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
   bool _onScreen = true;
   bool _appResumed = true;
 
+  /// §707 итер. 6 — открыта страница устройства: опрос идёт, хотя вкладка
+  /// перекрыта; [_live] — запись узла для страницы.
+  bool _devicePageOpen = false;
+  final _live = ValueNotifier<CcTailscaleStatus?>(null);
+
   /// Устройства (`stableId`), у которых раскрыты адреса сверх двух.
   final _expanded = <String>{};
 
@@ -245,9 +251,21 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
   /// Файлы, по которым идёт Save / Delete / Cancel (кнопки неактивны).
   final _fileBusy = <String>{};
 
-  /// §707 итер. 2 — переключатель автосохранения; `null` — не показывается.
-  CcTaildropAutoSave? _autoSave;
-  bool _autoSaveBusy = false;
+  /// §707 итер. 9 — поля Taildrop записи узла (после записи — свои, пока
+  /// экран не передаст новые); `null` — переключателей нет.
+  late ({bool commandsOff, bool autosaveOff})? _flags = widget.taildropFlags;
+  bool _flagBusy = false;
+
+  /// Android 10+: автосохранение доступно (до ответа — считается да).
+  bool _autoSaveSupported = true;
+
+  @override
+  void didUpdateWidget(TailscaleNetworkTab old) {
+    super.didUpdateWidget(old);
+    if (old.taildropFlags != widget.taildropFlags) {
+      _flags = widget.taildropFlags;
+    }
+  }
 
   @override
   void initState() {
@@ -283,7 +301,7 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
       _acquired = true;
       unawaited(CcChannel.instance.acquireTailscaleStatus());
     }
-    unawaited(_loadAutoSave());
+    unawaited(_loadAutoSaveSupported());
     final inboxSource = widget.inboxSource ??
         (widget.statusSource == null ? widget.actions.inbox : null);
     if (inboxSource != null) {
@@ -344,6 +362,7 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     _redrawTimer?.cancel();
+    _live.dispose();
     unawaited(_sub?.cancel());
     unawaited(_vpnSub?.cancel());
     unawaited(_inboxSub?.cancel());
@@ -353,10 +372,14 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
   }
 
   /// §645 — опрос идёт, пока вкладка на экране, приложение на переднем плане,
-  /// VPN включён и ядро знает метод. Запуск — первый вызов сразу.
+  /// VPN включён и ядро знает метод. Запуск — первый вызов сразу. Страница
+  /// устройства (§707 итер. 6) считается «на экране».
   void _syncPolling() {
-    final want =
-        mounted && _onScreen && _appResumed && _vpnUp && !_pollUnsupported;
+    final want = mounted &&
+        (_onScreen || _devicePageOpen) &&
+        _appResumed &&
+        _vpnUp &&
+        !_pollUnsupported;
     if (!want) {
       _pollTimer?.cancel();
       _pollTimer = null;
@@ -416,6 +439,7 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
       _hasData = true;
       _status = s;
     });
+    _live.value = s;
   }
 
   void _snack(String text) {
@@ -459,7 +483,7 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
         _exitNodeBlock(context, s)
       else if (recordedExit != null)
         _savedExitNodeBlock(context, recordedExit),
-      if (widget.onSaveFields != null || (_autoSave != null && _taildropOn))
+      if (widget.onSaveFields != null || _hasTaildropSwitches)
         _settingsBlock(context),
       _devicesHeader(context, devices),
       if (devices.isEmpty)
@@ -971,7 +995,7 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
     final body = widget.body;
     final hasExit = recordedExitNode(body) != null;
     final advertise = body['advertise_exit_node'] == true;
-    final autoSave = _taildropOn ? _autoSave : null;
+    final flags = _hasTaildropSwitches ? _flags : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1003,40 +1027,64 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
               ? null
               : (v) => unawaited(_saveTaildrop(v)),
         ),
-        if (autoSave != null)
+        // §707 итер. 9 — поля записи узла; видны при Allow Taildrop и по
+        // умолчанию включены (в записи хранится выключение, отсюда `!`).
+        // Sharee (устройства других пользователей) своими не считаются.
+        if (flags != null) ...[
+          SwitchListTile(
+            key: const ValueKey('tailscale-taildrop-commands'),
+            dense: true,
+            title: Text(getLocalText
+                .s("Accept clipboard and links from my devices")),
+            subtitle: Text(getLocalText
+                .s("Devices shared by other users are not counted as yours.")),
+            value: !flags.commandsOff,
+            onChanged: _flagBusy
+                ? null
+                : (v) => unawaited(
+                    _setFlag(NodeRecordFlag.disableTaildropCommands, !v)),
+          ),
           SwitchListTile(
             key: const ValueKey('tailscale-taildrop-autosave'),
             dense: true,
             title: Text(getLocalText.s("Save received files to Downloads")),
-            subtitle: autoSave.supported
+            subtitle: _autoSaveSupported
                 ? null
                 : Text(getLocalText.s("Needs Android 10 or later.")),
-            value: autoSave.enabled && autoSave.supported,
-            onChanged: _autoSaveBusy || !autoSave.supported
+            value: !flags.autosaveOff && _autoSaveSupported,
+            onChanged: _flagBusy || !_autoSaveSupported
                 ? null
-                : (v) => unawaited(_setAutoSave(v)),
+                : (v) => unawaited(
+                    _setFlag(NodeRecordFlag.disableTaildropAutosave, !v)),
           ),
+        ],
       ],
     );
   }
 
-  /// §707 итер. 2 — настройка автосохранения узла (своя у каждого тега).
-  Future<void> _loadAutoSave() async {
-    final v = await widget.actions.getAutoSave(widget.liveTag);
-    if (!mounted || v == null) return;
-    setState(() => _autoSave = v);
+  /// Переключатели полей Taildrop: своя запись есть и Taildrop узла включён.
+  bool get _hasTaildropSwitches =>
+      _flags != null && widget.onSaveRecordFlag != null && _taildropOn;
+
+  Future<void> _loadAutoSaveSupported() async {
+    final v = await widget.actions.autoSaveSupported();
+    if (!mounted || v == _autoSaveSupported) return;
+    setState(() => _autoSaveSupported = v);
   }
 
-  Future<void> _setAutoSave(bool enabled) async {
-    final cur = _autoSave;
-    if (cur == null) return;
-    setState(() => _autoSaveBusy = true);
-    final ok = await widget.actions.setAutoSave(widget.liveTag, enabled);
+  Future<void> _setFlag(NodeRecordFlag flag, bool value) async {
+    final save = widget.onSaveRecordFlag;
+    final cur = _flags;
+    if (save == null || cur == null) return;
+    setState(() => _flagBusy = true);
+    final ok = await save(flag, value);
     if (!mounted) return;
     setState(() {
-      _autoSaveBusy = false;
+      _flagBusy = false;
       if (ok) {
-        _autoSave = CcTaildropAutoSave(enabled: enabled, supported: cur.supported);
+        _flags = flag == NodeRecordFlag.disableTaildropCommands
+            ? (commandsOff: value, autosaveOff: cur.autosaveOff)
+            : (commandsOff: cur.commandsOff, autosaveOff: value);
       }
     });
   }
@@ -1186,7 +1234,9 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
         size: 10,
         color: p.online ? Colors.green : theme.disabledColor,
       ),
-      onTap: () => unawaited(_deviceMenu(p)),
+      onTap: () => unawaited(_openDevice(p)),
+      onLongPress: () =>
+          unawaited(_copy(p.firstIp.isNotEmpty ? p.firstIp : p.hostName)),
     );
   }
 
@@ -1391,88 +1441,44 @@ class _TailscaleNetworkTabState extends State<TailscaleNetworkTab>
         _snack(getLocalText.s("Couldn't cancel: %s", err));
       });
 
-  /// Меню устройства: имя, MagicDNS-имя, по пункту на адрес, проверка по
-  /// первому адресу.
-  Future<void> _deviceMenu(CcTailscalePeer p) async {
-    final single = p.ips.length == 1;
-    // §707 — отправка файла: только своему устройству в сети, которое
-    // принимает файлы, и только при включённом в tailnet Taildrop.
-    final canSend =
-        _taildropOn && (_status?.canShareFiles ?? false) && p.isTaildropTarget;
-    // §707 итер. 4 — разрешения служебных файлов от этого устройства.
-    final perms = _taildropOn && p.stableId.isNotEmpty && !p.shareeNode
-        ? await widget.actions.getPermissions(widget.liveTag, p.stableId)
-        : null;
-    if (!mounted) return;
-    final action = await showAppBottomSheet<String>(
-      context: context,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.copy),
-            title: Text(getLocalText.s("Copy name")),
-            onTap: () => Navigator.pop(ctx, 'name'),
-          ),
-          if (p.dnsNameClean.isNotEmpty)
-            ListTile(
-              leading: const Icon(Icons.copy),
-              title: Text(getLocalText.s("Copy MagicDNS name")),
-              onTap: () => Navigator.pop(ctx, 'dns'),
-            ),
-          for (final ip in p.ips)
-            ListTile(
-              leading: const Icon(Icons.copy_all),
-              title: Text(
-                single
-                    ? getLocalText.s("Copy address")
-                    : getLocalText.s("Copy %s", ip),
-              ),
-              onTap: () => Navigator.pop(ctx, 'ip:$ip'),
-            ),
-          if (p.firstIp.isNotEmpty)
-            ListTile(
-              leading: const Icon(Icons.network_ping),
-              title: Text(getLocalText.s("Ping")),
-              onTap: () => Navigator.pop(ctx, 'ping'),
-            ),
-          if (canSend)
-            ListTile(
-              leading: const Icon(Icons.upload_file),
-              title: Text(getLocalText.s("Send file…")),
-              onTap: () => Navigator.pop(ctx, 'send'),
-            ),
-          if (perms != null && perms.isNotEmpty)
-            _PermissionSwitches(
-              initial: perms,
-              onChanged: (kind, v) =>
-                  widget.actions.setPermission(widget.liveTag, p, kind, v),
-            ),
-        ],
-      ),
-    );
-    if (!mounted || action == null) return;
-    if (action.startsWith('ip:')) {
-      await _copy(action.substring(3));
-      return;
-    }
-    switch (action) {
-      case 'name':
-        await _copy(p.hostName);
-      case 'dns':
-        await _copy(p.dnsNameClean);
-      case 'send':
-        await _sendFiles(p);
-      case 'ping':
-        await showAppBottomSheet<void>(
-          context: context,
-          builder: (_) => TailscalePingSheet(
+  /// §707 итер. 6 — страница устройства: сводка, Ping и Send file…,
+  /// адреса с копированием.
+  Future<void> _openDevice(CcTailscalePeer p) async {
+    _live.value = _status;
+    _devicePageOpen = true;
+    _syncPolling();
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _DevicePage(
+            initial: p,
+            live: _live,
             tag: widget.liveTag,
-            peer: p,
             actions: widget.actions,
+            sendBlock: _sendBlock,
+            onSend: _sendFiles,
+            onCopy: _copy,
           ),
-        );
+        ),
+      );
+    } finally {
+      _devicePageOpen = false;
+      if (mounted) _syncPolling();
     }
+  }
+
+  /// Почему Send file… неактивна; `null` — отправить можно. Выключенный
+  /// Taildrop на той стороне ядро не публикует — он выясняется отказом при
+  /// отправке.
+  String? _sendBlock(CcTailscalePeer p) {
+    if (!_taildropOn) return getLocalText.s("Taildrop is off for this node.");
+    if (!(_status?.canShareFiles ?? false)) {
+      return getLocalText.s("File sharing is off in this tailnet.");
+    }
+    if (!p.online) return getLocalText.s("Device is offline.");
+    if (p.shareeNode) return getLocalText.s("Device belongs to another user.");
+    if (!p.canReceiveFiles) return getLocalText.s("Device can't receive files.");
+    return null;
   }
 }
 
@@ -1663,54 +1669,183 @@ class _ReplaceKeyDialogState extends State<_ReplaceKeyDialog> {
   }
 }
 
-/// §707 итер. 4 — переключатели разрешений служебных файлов в меню
-/// устройства. Виды — те, что вернул натив (реестр `service_files.json`);
-/// вид без подписи не показывается.
-class _PermissionSwitches extends StatefulWidget {
-  const _PermissionSwitches({required this.initial, required this.onChanged});
+/// §707 итер. 6 — страница устройства (макет — в задаче 707): сводка,
+/// Ping и Send file…, адреса с копированием по тапу. Запись устройства берётся из [live] по stable ID; пропало из
+/// записи — остаётся последнее известное.
+class _DevicePage extends StatefulWidget {
+  const _DevicePage({
+    required this.initial,
+    required this.live,
+    required this.tag,
+    required this.actions,
+    required this.sendBlock,
+    required this.onSend,
+    required this.onCopy,
+  });
 
-  final Map<String, bool> initial;
-  final Future<bool> Function(String kind, bool allowed) onChanged;
+  final CcTailscalePeer initial;
+  final ValueListenable<CcTailscaleStatus?> live;
+  final String tag;
+  final TailscaleNetworkActions actions;
+  final String? Function(CcTailscalePeer) sendBlock;
+  final Future<void> Function(CcTailscalePeer) onSend;
+  final Future<void> Function(String) onCopy;
 
   @override
-  State<_PermissionSwitches> createState() => _PermissionSwitchesState();
+  State<_DevicePage> createState() => _DevicePageState();
 }
 
-class _PermissionSwitchesState extends State<_PermissionSwitches> {
-  late final Map<String, bool> _values = Map.of(widget.initial);
-  final _busy = <String>{};
+class _DevicePageState extends State<_DevicePage> {
+  late CcTailscalePeer _peer = widget.initial;
 
-  static String? _label(String kind) => switch (kind) {
-    'clipboard' => getLocalText.s("Clipboard from this device"),
-    'open_url' => getLocalText.s("Links from this device"),
-    _ => null,
-  };
-
-  Future<void> _set(String kind, bool v) async {
-    setState(() => _busy.add(kind));
-    final ok = await widget.onChanged(kind, v);
-    if (!mounted) return;
-    setState(() {
-      _busy.remove(kind);
-      if (ok) _values[kind] = v;
-    });
+  CcTailscalePeer _current(CcTailscaleStatus? s) {
+    final id = widget.initial.stableId;
+    final found = s?.peers.where(
+      (p) => id.isNotEmpty
+          ? p.stableId == id
+          : p.hostName == widget.initial.hostName,
+    );
+    if (found != null && found.isNotEmpty) _peer = found.first;
+    return _peer;
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      for (final e in _values.entries)
-        if (_label(e.key) case final String label)
-          SwitchListTile(
-            key: ValueKey('taildrop-permission-${e.key}'),
-            dense: true,
-            title: Text(label),
-            value: e.value,
-            onChanged: _busy.contains(e.key)
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<CcTailscaleStatus?>(
+        valueListenable: widget.live,
+        builder: (context, s, _) => _page(context, _current(s)),
+      );
+
+  Widget _page(BuildContext context, CcTailscalePeer p) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final connection = tailscaleConnectionText(p, now);
+    final summary = [
+      p.online ? getLocalText.s("online") : getLocalText.s("offline"),
+      if (tailscaleDeviceDetails(p) case final d when d.isNotEmpty) d,
+    ].join(' · '); // l10n-exempt: separator
+    final block = widget.sendBlock(p);
+    return Scaffold(
+      appBar: AppBar(title: Text(p.hostName)),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 16).withSafeBottom(context),
+        children: [
+          ListTile(
+            key: const ValueKey('tailscale-device-summary'),
+            leading: Icon(
+              Icons.circle,
+              size: 10,
+              color: p.online ? Colors.green : theme.disabledColor,
+            ),
+            title: Text(summary),
+            subtitle: connection.isEmpty
                 ? null
-                : (v) => unawaited(_set(e.key, v)),
+                : Text.rich(
+                    TextSpan(
+                      children: _TailscaleNetworkTabState._pathSpans(
+                        tailscalePathKind(p),
+                        connection,
+                      ),
+                    ),
+                  ),
           ),
-    ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              children: [
+                if (p.firstIp.isNotEmpty) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('tailscale-device-ping'),
+                      icon: const Icon(Icons.network_ping),
+                      label: Text(getLocalText.s("Ping")),
+                      onPressed: () => unawaited(_ping(p)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('tailscale-device-send'),
+                    icon: const Icon(Icons.upload_file),
+                    label: Text(getLocalText.s("Send file…")),
+                    onPressed:
+                        block == null ? () => unawaited(widget.onSend(p)) : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (block != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Text(
+                block,
+                key: const ValueKey('tailscale-device-send-block'),
+                style: small,
+              ),
+            ),
+          _header(context, getLocalText.s("Addresses")),
+          _copyRow(context, getLocalText.s("Name"), p.hostName),
+          if (p.dnsNameClean.isNotEmpty)
+            _copyRow(
+              context,
+              'MagicDNS', // l10n-exempt: product name
+              p.dnsNameClean,
+            ),
+          for (final ip in p.ips)
+            _copyRow(
+              context,
+              ip.contains(':')
+                  ? 'IPv6' // l10n-exempt: protocol name
+                  : 'IPv4', // l10n-exempt: protocol name
+              ip,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _ping(CcTailscalePeer p) => showAppBottomSheet<void>(
+    context: context,
+    builder: (_) =>
+        TailscalePingSheet(tag: widget.tag, peer: p, actions: widget.actions),
   );
+
+  Widget _header(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+    child: Text(
+      text,
+      style: Theme.of(context).textTheme.titleSmall
+          ?.copyWith(fontWeight: FontWeight.w600),
+    ),
+  );
+
+  /// Подпись слева, значение справа целиком (переносится), значок
+  /// копирования; тап по строке копирует значение.
+  Widget _copyRow(BuildContext context, String label, String value) {
+    final theme = Theme.of(context);
+    return InkWell(
+      key: ValueKey('tailscale-device-copy-$value'),
+      onTap: () => unawaited(widget.onCopy(value)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            SizedBox(width: 88, child: Text(label)),
+            Expanded(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.copy, size: 18, color: theme.hintColor),
+          ],
+        ),
+      ),
+    );
+  }
 }

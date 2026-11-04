@@ -39,6 +39,8 @@ object TaildropServiceFiles {
     class Spec(
         val prefix: String,
         val suffix: String,
+        val timeFormat: String,
+        val labelLength: Int,
         val maxBytes: Long,
         val versions: Set<Long>,
         val ttlSeconds: Long,
@@ -83,12 +85,73 @@ object TaildropServiceFiles {
         Spec(
             prefix = value("name_prefix") as String,
             suffix = value("name_suffix") as String,
+            timeFormat = value("name_time_format") as String,
+            labelLength = (value("name_label_length") as Number).toInt(),
             maxBytes = (value("max_bytes") as Number).toLong(),
             versions = versions,
             ttlSeconds = (value("ttl_seconds") as Number).toLong(),
             kinds = kinds,
         )
     }.getOrNull()
+
+    // ─────────────────────────── отправитель ───────────────────────────
+
+    /// Итог сборки служебного файла (§707 итер. 7).
+    sealed class Built {
+        class Ok(val name: String, val bytes: ByteArray) : Built()
+
+        /// Тело больше `max_bytes` (§7 п.2).
+        class TooLarge(val size: Int, val maxBytes: Long) : Built()
+
+        /// Формат времени имени реестру неизвестен этой версии.
+        object Unsupported : Built()
+    }
+
+    private const val TIME_FORMAT = "YYYYMMDDTHHMMSSZ"
+    private const val LABEL_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+    /// §3 — тело `{"lx": <версия>, "commands": [...]}` в UTF-8; `lx` —
+    /// старшая из `versions`.
+    internal fun body(spec: Spec, commands: JSONArray): ByteArray =
+        JSONObject()
+            .put("lx", spec.versions.maxOrNull() ?: 1L)
+            .put("commands", commands)
+            .toString()
+            .toByteArray(StandardCharsets.UTF_8)
+
+    /// §2–§3 — служебный файл с командами [commands]: имя
+    /// `<name_prefix><UTC YYYYMMDDTHHMMSSZ>-<метка [a-z0-9]><name_suffix>`.
+    /// Команды не проверяются (Debug API шлёт и битые — проверять разбор
+    /// получателя); предел `max_bytes` — проверяется.
+    internal fun build(spec: Spec, commands: JSONArray, nowMs: Long, random: java.util.Random): Built {
+        if (spec.timeFormat != TIME_FORMAT) return Built.Unsupported
+        val bytes = body(spec, commands)
+        if (bytes.size.toLong() > spec.maxBytes) return Built.TooLarge(bytes.size, spec.maxBytes)
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            .format(java.util.Date(nowMs))
+        val label = buildString {
+            repeat(spec.labelLength) { append(LABEL_ALPHABET[random.nextInt(LABEL_ALPHABET.length)]) }
+        }
+        return Built.Ok("${spec.prefix}$stamp-$label${spec.suffix}", bytes)
+    }
+
+    /// Одна команда вида [kind] со значением [value] (`clipboard` → `text`,
+    /// `open_url` → `url`).
+    internal fun command(kind: String, value: String): JSONObject =
+        JSONObject().put("kind", kind).put(if (kind == "open_url") "url" else "text", value)
+
+    /// «Ссылка целиком»: текст после trim — одна ссылка схемы из [schemes]
+    /// (`open_url.schemes` реестра), без пробелов внутри, с непустым адресом
+    /// после `://`. Иначе `null`.
+    internal fun singleUrl(text: String, schemes: Set<String>?): String? {
+        val t = text.trim()
+        if (t.isEmpty() || schemes.isNullOrEmpty() || t.any { it.isWhitespace() }) return null
+        val i = t.indexOf("://")
+        if (i <= 0 || i + 3 >= t.length || t[i + 3] == '/') return null
+        if (t.substring(0, i).lowercase() !in schemes) return null
+        return t
+    }
 
     /// Кандидат — по префиксу и суффиксу имени (ядро может переименовать файл
     /// при совпадении имён), §2.
@@ -119,61 +182,28 @@ object TaildropServiceFiles {
         return out
     }
 
-    // ─────────────────────────── разрешения ───────────────────────────
+    // ─────────────────────────── разрешение ───────────────────────────
 
-    /// В тех же настройках устройства, что автосохранение (`lxbox_taildrop`,
-    /// не бэкап). Ключ — вид + тег узла + stable ID пира; значение — имя пира
-    /// при выдаче (файл без `senderID` сверяется с ним, §5).
-    private const val PREFS = "lxbox_taildrop"
-    private const val PERM_PREFIX = "perm."
-    private const val SEP = '\u0001'
+    /// §707 итер. 9, контракт SERVICE_FILES §5 (1.1.159) — команда выполняется,
+    /// только если у узла [tag] приём не выключен полем
+    /// `disable_taildrop_commands` (тега нет в зеркале
+    /// `taildrop_commands_off_tags`), `senderID` файла непустой и пир с этим ID
+    /// есть в статусе узла [ownPeers] — свои устройства, без sharee. Fallback по
+    /// имени нет: после перезапуска ядра `senderID` пуст — команды не
+    /// выполняются, файл удаляется как всегда.
+    internal fun allowed(ctx: Context, tag: String, senderId: String, ownPeers: Set<String>): Boolean =
+        senderId.isNotEmpty() && senderId in ownPeers && tag !in BootReceiver.taildropCommandsOffTags(ctx)
 
-    private fun prefs(ctx: Context) =
-        ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    private fun permKey(kind: String, tag: String, peerId: String) = "$PERM_PREFIX$kind.$tag$SEP$peerId"
-
-    /// Вид → разрешено, по всем видам реестра.
-    fun permissions(ctx: Context, tag: String, peerId: String): Map<String, Boolean> {
-        val spec = spec(ctx) ?: return emptyMap()
-        val p = prefs(ctx)
-        return spec.kinds.keys.associateWith { p.contains(permKey(it, tag, peerId)) }
-    }
-
-    /// `false` — вид неизвестен реестру или нет ID пира.
-    fun setPermission(ctx: Context, tag: String, peerId: String, peerName: String, kind: String, allowed: Boolean): Boolean {
-        val spec = spec(ctx) ?: return false
-        if (tag.isEmpty() || peerId.isEmpty() || kind !in spec.kinds) return false
-        val e = prefs(ctx).edit()
-        if (allowed) e.putString(permKey(kind, tag, peerId), peerName) else e.remove(permKey(kind, tag, peerId))
-        e.apply()
-        return true
-    }
-
-    /// §5 — разрешение по `senderID`; пустой — по имени, записанному вместе с
-    /// ID при выдаче (имя само к ID не привязывается).
-    internal fun allowed(ctx: Context, tag: String, kind: String, senderId: String, senderName: String): Boolean {
-        val p = prefs(ctx)
-        if (senderId.isNotEmpty()) return p.contains(permKey(kind, tag, senderId))
-        if (senderName.isEmpty()) return false
-        val prefix = "$PERM_PREFIX$kind.$tag$SEP"
-        return p.all.any { (k, v) -> k.startsWith(prefix) && v == senderName }
-    }
-
-    /// Узлы удалены или переименованы — их разрешения снимаются.
-    fun forgetTags(ctx: Context, tags: Collection<String>) {
-        if (tags.isEmpty()) return
-        val p = prefs(ctx)
-        val gone = tags.toSet()
-        // Ключ `perm.<вид>.<тег>␁<пир>`: в имени вида точки нет.
-        val drop = p.all.keys.filter { k ->
-            k.startsWith(PERM_PREFIX) && k.contains(SEP) &&
-                k.removePrefix(PERM_PREFIX).substringBefore(SEP).substringAfter('.') in gone
-        }
-        if (drop.isEmpty()) return
-        val e = p.edit()
-        for (k in drop) e.remove(k)
-        e.apply()
+    /// Stable ID своих устройств узла [tag] по снимку ядра: пиры всех групп
+    /// пользователя без признака `sharee_node` (как получатели окна Send).
+    @Suppress("UNCHECKED_CAST")
+    private fun ownPeers(snapshot: List<Map<String, Any>>?, tag: String): Set<String> {
+        val node = snapshot.orEmpty().firstOrNull { "${it["tag"] ?: ""}" == tag } ?: return emptySet()
+        val groups = node["user_groups"] as? List<Map<String, Any>> ?: return emptySet()
+        return groups.flatMap { (it["peers"] as? List<Map<String, Any>>).orEmpty() }
+            .filter { it["sharee_node"] != true }
+            .mapNotNull { p -> "${p["stable_id"] ?: ""}".takeIf { it.isNotEmpty() } }
+            .toSet()
     }
 
     // ─────────────────────────── счётчики ───────────────────────────
@@ -223,7 +253,7 @@ object TaildropServiceFiles {
     /// Принятый файл входящих: имя и путь на диске.
     class Incoming(val name: String, val file: File)
 
-    private class Clip(val text: String, val modifiedAt: Long, val name: String)
+    private class Clip(val text: String, val modifiedAt: Long, val name: String, val peerId: String)
 
     /// §6 — разобрать кандидатов [items] узла [tag] (пачка: один `clipboard` —
     /// последний). Возвращает имена служебных файлов (команды выполнены,
@@ -237,6 +267,7 @@ object TaildropServiceFiles {
         val app = ctx.applicationContext
         val cc = if (viaCore) BoxService.commandClient else null
         var senders: Map<String, Pair<String, String>>? = null
+        var own: Set<String>? = null
         val handled = LinkedHashSet<String>()
         var lastClip: Clip? = null
         var bad = 0
@@ -253,6 +284,11 @@ object TaildropServiceFiles {
             if (!fresh) Stats.expired.incrementAndGet()
             if (fresh && commands.isNotEmpty()) {
                 if (senders == null) senders = cc?.taildropInboxSnapshot(tag, SNAPSHOT_TIMEOUT_MS) ?: emptyMap()
+                // Снимок статуса — только если приём команд у узла не выключен.
+                if (own == null) {
+                    own = if (tag in BootReceiver.taildropCommandsOffTags(app)) emptySet()
+                    else ownPeers(runCatching { cc?.tailscaleSnapshot(SNAPSHOT_TIMEOUT_MS) }.getOrNull(), tag)
+                }
                 val (senderId, senderName) = senders[item.name] ?: ("" to "")
                 for (cmd in commands) {
                     val kindName = cmd.opt("kind") as? String
@@ -265,7 +301,7 @@ object TaildropServiceFiles {
                         bad++
                         continue
                     }
-                    if (!allowed(app, tag, kindName, senderId, senderName)) {
+                    if (!allowed(app, tag, senderId, own ?: emptySet())) {
                         Stats.noPermission.incrementAndGet()
                         continue
                     }
@@ -276,7 +312,7 @@ object TaildropServiceFiles {
                                 bad++
                                 continue
                             }
-                            val c = Clip(text, modifiedAt, item.name)
+                            val c = Clip(text, modifiedAt, item.name, senderId)
                             val prev = lastClip
                             if (prev == null || later(spec, c, prev)) lastClip = c
                         }
@@ -291,6 +327,10 @@ object TaildropServiceFiles {
                             if (showLink(app, tag, item.name, senderName, url)) {
                                 Stats.openUrl.incrementAndGet()
                                 executed(kindName, url)
+                                // §707 итер. 7 — в ленту окна «Send clipboard».
+                                TaildropClip.addIncoming(
+                                    tag, senderId, kindName, url,
+                                )
                             } else {
                                 Stats.noHandler.incrementAndGet()
                             }
@@ -306,6 +346,7 @@ object TaildropServiceFiles {
             setClipboard(app, it.text)
             Stats.clipboard.incrementAndGet()
             executed("clipboard", it.text)
+            TaildropClip.addIncoming(tag, it.peerId, "clipboard", it.text)
         }
         if (bad > 0) {
             Stats.invalid.addAndGet(bad)

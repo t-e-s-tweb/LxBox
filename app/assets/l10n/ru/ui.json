@@ -6881,11 +6881,11 @@
   "Taildrop is off for this node.": {
     "value": "Taildrop у этого узла выключен."
   },
-  "Clipboard from this device": {
-    "value": "Буфер обмена с этого устройства"
+  "Accept clipboard and links from my devices": {
+    "value": "Принимать буфер обмена и ссылки с моих устройств"
   },
-  "Links from this device": {
-    "value": "Ссылки с этого устройства"
+  "Devices shared by other users are not counted as yours.": {
+    "value": "Устройства, которыми поделились другие пользователи, вашими не считаются."
   },
   "Core: lx.wg.idle_suspend. An idle WireGuard endpoint that is not on the active route is torn down and rebuilt on its next dial.": {
     "value": "Ядро: lx.wg.idle_suspend. Простаивающий эндпоинт WireGuard вне активного маршрута разбирается и собирается заново при следующем подключении."
@@ -6902,22 +6902,34 @@
   "Core: lx.mtu_align. A node over a tunnel gets a packet size that fits into it: mtu for WireGuard and MASQUE, the initial packet size for Hysteria2 and TUIC. Values are never raised.": {
     "value": "Ядро: lx.mtu_align. Узел поверх туннеля получает размер пакета, который в туннель влезает: mtu у WireGuard и MASQUE, начальный размер пакета у Hysteria2 и TUIC. Значения никогда не повышаются."
   },
-  "Core: lx.quic_sniff_decoy. A relay with UDP sniffing (Xray destOverride quic) rewrites the destination by the SNI of the first QUIC packet; a junk first byte makes it give up. Servers drop the byte.": {
-    "value": "Ядро: lx.quic_sniff_decoy. Релей со сниффингом UDP (Xray destOverride quic) подменяет назначение по SNI из первого QUIC-пакета; мусорный первый байт заставляет его отступиться. Серверы этот байт отбрасывают."
+  "Core: lx.quic_sniff_decoy. A relay with UDP sniffing (Xray destOverride quic) rewrites the destination by the SNI of the first QUIC packet; a junk first byte makes it give up. Servers drop the byte. A DPI on your own uplink may react to it, hence Through detour by default.": {
+    "value": "Ядро: lx.quic_sniff_decoy. Релей со сниффингом UDP (Xray destOverride quic) подменяет назначение по SNI из первого QUIC-пакета; мусорный первый байт заставляет его отступиться. Серверы этот байт отбрасывают. DPI вашего собственного канала может на него среагировать, поэтому по умолчанию — Through detour."
   },
   "Core: lx.masque.idle_timeout. The idle window for MASQUE nodes that have no idle_timeout of their own.": {
     "value": "Ядро: lx.masque.idle_timeout. Окно простоя для узлов MASQUE без собственного idle_timeout."
   },
-  "Copy %s": {
-    "value": "Копировать %s"
+  "File sharing is off in this tailnet.": {
+    "value": "Отправка файлов выключена в этом tailnet."
   },
-  "Copy MagicDNS name": {
-    "value": "Копировать имя MagicDNS"
+  "Device is offline.": {
+    "value": "Устройство не в сети."
   },
-  "Copy address": {
-    "value": "Копировать адрес"
+  "Device belongs to another user.": {
+    "value": "Устройство принадлежит другому пользователю."
   },
-  "Copy name": {
-    "value": "Копировать имя"
+  "Device can't receive files.": {
+    "value": "Устройство не принимает файлы."
+  },
+  "online": {
+    "value": "в сети"
+  },
+  "VPN notification buttons": {
+    "value": "Кнопки уведомления VPN"
+  },
+  "Restart": {
+    "value": "Рестарт"
+  },
+  "Appears only while a Tailscale node has Allow Taildrop.": {
+    "value": "Есть, только пока у узла Tailscale включён Allow Taildrop."
   }
 }

@@ -135,13 +135,15 @@ object Taildrop {
 
     /// Запустить передачу [items] пиру [peerId] узла [tag]. `false` — VPN
     /// не поднят (потоки закрыты, ничего не откладывается). [onDone] — итог
-    /// после уведомления (§707 итер. 5, Debug API ждёт его).
+    /// после уведомления (§707 итер. 5, Debug API ждёт его). [quiet] — без
+    /// уведомлений отправки (§707 итер. 7: итог показывает лента окна).
     fun send(
         ctx: Context,
         tag: String,
         peerId: String,
         peerName: String,
         items: List<Item>,
+        quiet: Boolean = false,
         onDone: SendDone? = null,
     ): Boolean {
         val cc = BoxService.commandClient
@@ -153,7 +155,7 @@ object Taildrop {
         val id = SEND_ID_BASE + (nextId.getAndIncrement() and 0xfff)
         val job = SendJob()
         sends[id] = job
-        scope.launch { runSend(app, cc, id, job, tag, peerId, peerName, items, onDone) }
+        scope.launch { runSend(app, cc, id, job, tag, peerId, peerName, items, quiet, onDone) }
         return true
     }
 
@@ -188,13 +190,14 @@ object Taildrop {
         peerId: String,
         peerName: String,
         items: List<Item>,
+        quiet: Boolean,
         onDone: SendDone?,
     ) {
         fun done(status: String, error: String?) {
             runCatching { onDone?.onDone(status, error) }
         }
         val total = if (items.all { it.size >= 0 }) items.sumOf { it.size } else -1L
-        val notifier = SendNotifier(ctx, id, peerName, items.size, total)
+        val notifier = SendNotifier(ctx, id, peerName, items.size, total, quiet)
         notifier.progress(0, 0L, force = true)
         val client = cc.newCallClient()
         if (client == null) {
@@ -357,6 +360,7 @@ object Taildrop {
         private val peerName: String,
         private val count: Int,
         private val total: Long,
+        private val quiet: Boolean,
     ) {
         private var lastAt = 0L
 
@@ -425,6 +429,7 @@ object Taildrop {
         }
 
         private fun notify(b: NotificationCompat.Builder) {
+            if (quiet) return
             runCatching { notificationManager(ctx).notify(id, b.build()) }
                 .onFailure { Log.w(TAG, "notify failed: ${it.javaClass.simpleName}") }
         }
@@ -493,38 +498,17 @@ object Taildrop {
         return CoreNote.Received(tag, rest)
     }
 
-    // ─────────────── автосохранение (настройка устройства) ───────────────
-
-    /// Настройки Taildrop этого устройства: не в `lxbox_settings.json`,
-    /// значит не в бэкапе L×Box; сервис читает их без Flutter.
-    private const val PREFS = "lxbox_taildrop"
-    private const val AUTOSAVE_PREFIX = "autosave."
+    // ─────────────── автосохранение (поле записи узла) ───────────────
 
     /// Автосохранение в Downloads — только API 29+ (MediaStore без разрешений).
     fun autoSaveSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
-    private fun prefs(ctx: Context) =
-        ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
+    /// §707 итер. 9 (контракт 1.1.159) — по умолчанию включено (узел с Allow
+    /// Taildrop); выключает поле `disable_taildrop_autosave` записи узла,
+    /// Kotlin видит его как итоговый тег в зеркале `taildrop_autosave_off_tags`
+    /// (наполняет Dart).
     fun isAutoSave(ctx: Context, tag: String): Boolean =
-        autoSaveSupported() && prefs(ctx).getBoolean(AUTOSAVE_PREFIX + tag, false)
-
-    /// Хранится только включённое значение; выключение убирает запись.
-    fun setAutoSave(ctx: Context, tag: String, enabled: Boolean) {
-        val e = prefs(ctx).edit()
-        if (enabled) e.putBoolean(AUTOSAVE_PREFIX + tag, true) else e.remove(AUTOSAVE_PREFIX + tag)
-        e.apply()
-    }
-
-    /// Узлы удалены или переименованы — их записи убираются.
-    fun forgetAutoSave(ctx: Context, tags: Collection<String>) {
-        if (tags.isEmpty()) return
-        val e = prefs(ctx).edit()
-        for (t in tags) e.remove(AUTOSAVE_PREFIX + t)
-        e.apply()
-        // §707 итер. 4 — и разрешения служебных файлов узлов.
-        TaildropServiceFiles.forgetTags(ctx, tags)
-    }
+        autoSaveSupported() && tag !in BootReceiver.taildropAutosaveOffTags(ctx)
 
     // ─────────────── уведомления приёма: кнопки и сохранение ───────────────
 

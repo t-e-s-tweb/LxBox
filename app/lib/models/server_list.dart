@@ -449,6 +449,20 @@ final class UserServer extends ServerList {
   final bool allowLan;
   final bool allowGateway;
 
+  /// §707 итер. 9 (контракт 1.1.159) — поля записи
+  /// `disable_taildrop_commands` (НЕ принимать буфер и ссылки от своих
+  /// устройств) и `disable_taildrop_autosave` (НЕ класть принятое в Downloads
+  /// без вопроса). По умолчанию оба выключены = функции включены (при Allow
+  /// Taildrop). В конфиг не идут; хранится только `true`.
+  final bool disableTaildropCommands;
+  final bool disableTaildropAutosave;
+
+  /// §707 (контракт 1.1.160) — поле записи `state_dir_id`: имя каталога
+  /// состояния узла tailscale у лаунчера. У нас НЕ применяется (каталог
+  /// состояния держит индекс §445 по `id` записи), только переносится без
+  /// потерь. Пусто — поля нет.
+  final String stateDirId;
+
   UserServer({
     required super.id,
     required super.name,
@@ -463,6 +477,9 @@ final class UserServer extends ServerList {
     this.allowLocal = false,
     this.allowLan = false,
     this.allowGateway = false,
+    this.disableTaildropCommands = false,
+    this.disableTaildropAutosave = false,
+    this.stateDirId = '',
     super.nodes,
   });
 
@@ -483,6 +500,9 @@ final class UserServer extends ServerList {
     bool? allowLocal,
     bool? allowLan,
     bool? allowGateway,
+    bool? disableTaildropCommands,
+    bool? disableTaildropAutosave,
+    String? stateDirId,
   }) =>
       UserServer(
         id: id,
@@ -498,6 +518,11 @@ final class UserServer extends ServerList {
         allowLocal: allowLocal ?? this.allowLocal,
         allowLan: allowLan ?? this.allowLan,
         allowGateway: allowGateway ?? this.allowGateway,
+        disableTaildropCommands:
+            disableTaildropCommands ?? this.disableTaildropCommands,
+        disableTaildropAutosave:
+            disableTaildropAutosave ?? this.disableTaildropAutosave,
+        stateDirId: stateDirId ?? this.stateDirId,
         nodes: nodes ?? this.nodes,
       );
 
@@ -517,12 +542,16 @@ final class UserServer extends ServerList {
           skipTailscalePresets == other.skipTailscalePresets &&
           allowLocal == other.allowLocal &&
           allowLan == other.allowLan &&
-          allowGateway == other.allowGateway);
+          allowGateway == other.allowGateway &&
+          disableTaildropCommands == other.disableTaildropCommands &&
+          disableTaildropAutosave == other.disableTaildropAutosave &&
+          stateDirId == other.stateDirId);
 
   @override
   int get hashCode => Object.hash(id, enabled, tagPrefix, detourPolicy, tls,
       rawBody, _eq.hash(warnings), skipTailscalePresets, allowLocal, allowLan,
-      allowGateway);
+      allowGateway, disableTaildropCommands, disableTaildropAutosave,
+      stateDirId);
 }
 
 /// §234 — член папки: самодостаточный парсируемый фрагмент (URI-строка,
@@ -555,6 +584,16 @@ final class FolderMember {
   final bool allowLan;
   final bool allowGateway;
 
+  /// §707 итер. 9 — `disable_taildrop_commands` /
+  /// `disable_taildrop_autosave`, как у
+  /// `UserServer`.
+  final bool disableTaildropCommands;
+  final bool disableTaildropAutosave;
+
+  /// §707 (контракт 1.1.160) — `state_dir_id`, как у `UserServer`: только
+  /// перенос, не применяется (§445).
+  final String stateDirId;
+
   /// §636 — узловое переопределение TLS-ручек члена.
   final TlsPolicy tls;
 
@@ -572,6 +611,9 @@ final class FolderMember {
     this.allowLocal = false,
     this.allowLan = false,
     this.allowGateway = false,
+    this.disableTaildropCommands = false,
+    this.disableTaildropAutosave = false,
+    this.stateDirId = '',
     this.tls = TlsPolicy.none,
     NodeSpec? node,
   }) : node = node ?? _parseFirst(raw, nameHint);
@@ -607,6 +649,9 @@ final class FolderMember {
     bool? allowLocal,
     bool? allowLan,
     bool? allowGateway,
+    bool? disableTaildropCommands,
+    bool? disableTaildropAutosave,
+    String? stateDirId,
     TlsPolicy? tls,
   }) =>
       FolderMember(
@@ -619,6 +664,11 @@ final class FolderMember {
         allowLocal: allowLocal ?? this.allowLocal,
         allowLan: allowLan ?? this.allowLan,
         allowGateway: allowGateway ?? this.allowGateway,
+        disableTaildropCommands:
+            disableTaildropCommands ?? this.disableTaildropCommands,
+        disableTaildropAutosave:
+            disableTaildropAutosave ?? this.disableTaildropAutosave,
+        stateDirId: stateDirId ?? this.stateDirId,
         tls: tls ?? this.tls,
         // Смена raw или имени → re-parse в конструкторе; иначе нода та же.
         node: raw == null && nameHint == null ? node : null,
@@ -639,6 +689,9 @@ final class FolderMember {
           allowLocal == other.allowLocal &&
           allowLan == other.allowLan &&
           allowGateway == other.allowGateway &&
+          disableTaildropCommands == other.disableTaildropCommands &&
+          disableTaildropAutosave == other.disableTaildropAutosave &&
+          stateDirId == other.stateDirId &&
           tls == other.tls &&
           _sameGroup(node, other.node));
 
@@ -657,6 +710,9 @@ final class FolderMember {
       allowLocal,
       allowLan,
       allowGateway,
+      disableTaildropCommands,
+      disableTaildropAutosave,
+      stateDirId,
       tls);
 }
 
@@ -925,13 +981,25 @@ enum NodeRecordFlag {
   skipTailscalePresets,
   allowLocal,
   allowLan,
-  allowGateway;
+  allowGateway,
+
+  /// §707 итер. 9 — Taildrop, знак «выключено» (`true` = функция снята):
+  /// в конфиг не идут (правка не поднимает `configDirty`), итоговые теги
+  /// выключенных уходят в зеркало `boxvpn_boot`.
+  disableTaildropCommands,
+  disableTaildropAutosave;
+
+  /// Поле влияет на собранный конфиг (через пресеты).
+  bool get inConfig =>
+      this != disableTaildropCommands && this != disableTaildropAutosave;
 
   bool ofServer(UserServer u) => switch (this) {
         skipTailscalePresets => u.skipTailscalePresets,
         allowLocal => u.allowLocal,
         allowLan => u.allowLan,
         allowGateway => u.allowGateway,
+        disableTaildropCommands => u.disableTaildropCommands,
+        disableTaildropAutosave => u.disableTaildropAutosave,
       };
 
   bool ofMember(FolderMember m) => switch (this) {
@@ -939,6 +1007,8 @@ enum NodeRecordFlag {
         allowLocal => m.allowLocal,
         allowLan => m.allowLan,
         allowGateway => m.allowGateway,
+        disableTaildropCommands => m.disableTaildropCommands,
+        disableTaildropAutosave => m.disableTaildropAutosave,
       };
 
   UserServer onServer(UserServer u, bool v) => switch (this) {
@@ -946,6 +1016,8 @@ enum NodeRecordFlag {
         allowLocal => u.copyWith(allowLocal: v),
         allowLan => u.copyWith(allowLan: v),
         allowGateway => u.copyWith(allowGateway: v),
+        disableTaildropCommands => u.copyWith(disableTaildropCommands: v),
+        disableTaildropAutosave => u.copyWith(disableTaildropAutosave: v),
       };
 
   FolderMember onMember(FolderMember m, bool v) => switch (this) {
@@ -953,5 +1025,7 @@ enum NodeRecordFlag {
         allowLocal => m.copyWith(allowLocal: v),
         allowLan => m.copyWith(allowLan: v),
         allowGateway => m.copyWith(allowGateway: v),
+        disableTaildropCommands => m.copyWith(disableTaildropCommands: v),
+        disableTaildropAutosave => m.copyWith(disableTaildropAutosave: v),
       };
 }

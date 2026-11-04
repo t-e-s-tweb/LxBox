@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lxbox/models/server_list.dart' show NodeRecordFlag;
 import 'package:lxbox/services/debug/context.dart';
 import 'package:lxbox/services/debug/contract/errors.dart';
 import 'package:lxbox/services/debug/debug_registry.dart';
@@ -67,8 +67,20 @@ void main() {
     expect(bNode['can_share_files'], true);
     expect(bNode['self_id'], 'nSELF');
     expect(bNode['autosave'], true);
+    expect(bNode['commands'], false);
+    expect(bNode['autosave_supported'], true);
+    // §707 итер. 9 — у узла без своей записи полей Taildrop нет.
+    expect(a['autosave'], isNull);
+    expect(a['commands'], isNull);
     expect(bNode['inbox_files'], 2);
     expect(bNode['receiving'], 1);
+    expect(b['clip_target'], {'tag': 'ts-b', 'peer_id': 'nPEER1'});
+    expect(b['clip_feeds'], [
+      {'tag': 'ts-b', 'peer_id': 'nPEER1', 'messages': 3},
+    ]);
+    expect(jsonEncode(b), isNot(contains('laptop')));
+    final r = await call('GET', '/taildrop?reveal=true');
+    expect((r['clip_target'] as Map)['name'], 'laptop');
   });
 
   test('GET /taildrop with VPN off lists nodes without core fields', () async {
@@ -82,13 +94,13 @@ void main() {
     expect(fake.statusCalls, 0);
   });
 
-  test('GET /taildrop/peers hides names unless reveal; permissions per peer',
+  test('GET /taildrop/peers hides names unless reveal; no permissions',
       () async {
     final b = await call('GET', '/taildrop/peers?tag=ts-b');
     final peers = (b['peers'] as List).cast<Map>();
     expect(peers.first['id'], 'nPEER1');
     expect(peers.first.containsKey('name'), false);
-    expect(peers.first['permissions'], {'clipboard': true, 'open_url': false});
+    expect(peers.first.containsKey('permissions'), false);
     expect(jsonEncode(b), isNot(contains('laptop')));
 
     final r = await call('GET', '/taildrop/peers?tag=ts-b&reveal=true');
@@ -171,32 +183,39 @@ void main() {
         throwsA(isA<NotFound>()));
   });
 
-  test('POST /taildrop/send commands builds a service file from the registry',
+  test('POST /taildrop/send commands: the native builder makes the file',
       () async {
-    await call('POST', '/taildrop/send', {
+    final b = await call('POST', '/taildrop/send', {
       'tag': 'ts-b',
       'peer': 'nPEER1',
       'commands': [
         {'kind': 'clipboard', 'text': 'copied'},
       ],
     });
+    expect(fake.built.single, [
+      {'kind': 'clipboard', 'text': 'copied'},
+    ]);
     final s = fake.sent.single;
-    expect(s.$4, matches(RegExp(r'^lx-20261102T143005Z-[a-z0-9]{5}\.json$')));
-    expect(jsonDecode(utf8.decode(s.$5!)), {
-      'lx': 1,
-      'commands': [
-        {'kind': 'clipboard', 'text': 'copied'},
-      ],
-    });
+    expect(s.$4, 'lx-20261102T143005Z-k3x9p.json');
+    expect(s.$5, fake.builtBytes);
+    expect(b['sha256'], sha256.convert(fake.builtBytes).toString());
   });
 
-  test('buildServiceFile refuses a body over max_bytes', () async {
-    final spec = await fake.serviceFilesRegistry();
-    expect(
-        () => buildServiceFile(spec, [
-              {'kind': 'clipboard', 'text': 'x' * 70000},
-            ], now: now, random: Random(1)),
-        throwsA(isA<BadRequest>()));
+  test('POST /taildrop/send commands over max_bytes: 400, nothing sent',
+      () async {
+    fake.buildResult = const CcServiceFile(
+        error: 'too_large', size: 70100, maxBytes: 65536);
+    await expectLater(
+        call('POST', '/taildrop/send', {
+          'tag': 'ts-b',
+          'peer': 'nPEER1',
+          'commands': [
+            {'kind': 'clipboard', 'text': 'x'},
+          ],
+        }),
+        throwsA(isA<BadRequest>()
+            .having((e) => e.message, 'message', contains('65536'))));
+    expect(fake.sent, isEmpty);
   });
 
   test('inbox save / delete / cancel pick the file by index', () async {
@@ -216,15 +235,31 @@ void main() {
         throwsA(isA<NotFound>()));
   });
 
-  test('PUT /taildrop/settings: autosave and allow', () async {
+  test('PUT /taildrop/settings: autosave, commands (record fields) and allow',
+      () async {
     final b = await call('PUT', '/taildrop/settings',
-        {'tag': 'ts-a', 'autosave': true, 'allow': true});
+        {'tag': 'ts-a', 'autosave': true, 'commands': true, 'allow': true});
     expect(b['autosave'], true);
+    expect(b['commands'], true);
     expect(b['allow'], true);
-    expect(fake.autoSaveWrites.single, ('ts-a', true));
+    // «Включено» в запросе — поле выключения записи `false` (контракт
+    // 1.1.159).
+    expect(fake.flagWrites, [
+      ('ts-a', NodeRecordFlag.disableTaildropAutosave, false),
+      ('ts-a', NodeRecordFlag.disableTaildropCommands, false),
+    ]);
     expect(fake.allowWrites.single, ('ts-a', true));
 
-    fake.autoSaveSupported = false;
+    fake.flagWrites.clear();
+    final off = await call('PUT', '/taildrop/settings',
+        {'tag': 'ts-a', 'autosave': false, 'commands': false});
+    expect([off['autosave'], off['commands']], [false, false]);
+    expect(fake.flagWrites, [
+      ('ts-a', NodeRecordFlag.disableTaildropAutosave, true),
+      ('ts-a', NodeRecordFlag.disableTaildropCommands, true),
+    ]);
+
+    fake.supported = false;
     await expectLater(
         call('PUT', '/taildrop/settings', {'tag': 'ts-a', 'autosave': true}),
         throwsA(isA<Conflict>()));
@@ -232,16 +267,11 @@ void main() {
         throwsA(isA<BadRequest>()));
   });
 
-  test('PUT /taildrop/permissions: kind from the registry, peer by name',
-      () async {
-    await call('PUT', '/taildrop/permissions',
-        {'tag': 'ts-b', 'peer': 'laptop', 'kind': 'open_url', 'enabled': true});
-    expect(fake.permWrites.single,
-        ('ts-b', 'nPEER1', 'laptop', 'open_url', true));
+  test('PUT /taildrop/permissions is gone', () async {
     await expectLater(
         call('PUT', '/taildrop/permissions',
-            {'tag': 'ts-b', 'peer': 'laptop', 'kind': 'shell', 'enabled': true}),
-        throwsA(isA<BadRequest>()));
+            {'tag': 'ts-b', 'peer': 'laptop', 'kind': 'open_url', 'enabled': true}),
+        throwsA(isA<NotFound>()));
   });
 
   test('GET /taildrop/service-files: last value only with reveal', () async {
@@ -281,17 +311,20 @@ void main() {
 
 class _FakeActions extends TaildropDebugActions {
   bool up = true;
-  bool autoSaveSupported = true;
+  bool supported = true;
   int statusCalls = 0;
   CcTaildropResult sendResult = const CcTaildropResult(status: 'sent');
 
   final sent = <(String, String, String, String?, Uint8List?, String?)>[];
+  final built = <List<Object?>>[];
+  final builtBytes = Uint8List.fromList(
+      utf8.encode('{"lx":1,"commands":[{"kind":"clipboard"}]}'));
+  CcServiceFile? buildResult;
   final saved = <(String, String)>[];
   final deleted = <(String, String)>[];
   final cancelled = <(String, String, String)>[];
-  final autoSaveWrites = <(String, bool)>[];
+  final flagWrites = <(String, NodeRecordFlag, bool)>[];
   final allowWrites = <(String, bool)>[];
-  final permWrites = <(String, String, String, String, bool)>[];
 
   static const _peer = CcTailscalePeer(
       stableId: 'nPEER1',
@@ -337,14 +370,18 @@ class _FakeActions extends TaildropDebugActions {
   }
 
   @override
-  Future<CcTaildropAutoSave?> autoSave(String tag) async =>
-      CcTaildropAutoSave(enabled: tag == 'ts-b', supported: autoSaveSupported);
+  ({bool commands, bool autosave})? recordFlags(DebugContext ctx, String tag) =>
+      tag == 'ts-b' ? (commands: false, autosave: true) : null;
 
   @override
-  Future<bool> setAutoSave(String tag, bool enabled) async {
-    autoSaveWrites.add((tag, enabled));
-    return true;
+  Future<String?> setRecordFlag(
+      DebugContext ctx, String tag, NodeRecordFlag flag, bool value) async {
+    flagWrites.add((tag, flag, value));
+    return null;
   }
+
+  @override
+  Future<bool> autoSaveSupported() async => supported;
 
   @override
   Future<CcTaildropInbox?> inbox(String tag) async => const CcTaildropInbox(
@@ -390,22 +427,27 @@ class _FakeActions extends TaildropDebugActions {
   }
 
   @override
-  Future<Map<String, bool>?> permissions(String tag, String peerId) async =>
-      {'clipboard': true, 'open_url': false};
-
-  @override
-  Future<bool> setPermission(String tag, String peerId, String peerName,
-      String kind, bool allowed) async {
-    permWrites.add((tag, peerId, peerName, kind, allowed));
-    return true;
-  }
-
-  @override
   Future<CcTaildropResult> send(String tag, String peerId, String peerName,
       {String? name, Uint8List? bytes, String? text}) async {
     sent.add((tag, peerId, peerName, name, bytes, text));
     return sendResult;
   }
+
+  @override
+  Future<CcServiceFile?> buildServiceFile(List<Object?> commands) async {
+    built.add(commands);
+    return buildResult ??
+        CcServiceFile(
+            name: 'lx-20261102T143005Z-k3x9p.json', bytes: builtBytes);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> clipState() async => {
+        'target': {'tag': 'ts-b', 'peer_id': 'nPEER1', 'name': 'laptop'},
+        'feeds': [
+          {'tag': 'ts-b', 'peer_id': 'nPEER1', 'messages': 3},
+        ],
+      };
 
   @override
   Future<Map<String, dynamic>?> serviceStats() async => {

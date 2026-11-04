@@ -802,7 +802,7 @@ The other parameters:
 | Ru internet segment | DoT server IP, DoH server IP | `77.88.8.88 · Safe` | The same for the encrypted servers. Off: that server is not used. With all three servers Off the preset's DNS works as with the DNS switch off. |
 | Ru internet segment | GeoIP IP-range fallback | On | Also checks the IP against Russian ranges: catches connections where the domain is not detected. Downloads a 150 KB list. |
 | Ru internet segment | Russian apps by package | On | Routes Russian apps (banks, marketplaces, Gosuslugi, Yandex, VK) by package name, whatever domains they open. Downloads a 4 KB list. |
-| Ru internet segment, Russia-only services | Force IPv4 | On | Resolves the preset's domains to IPv4 only: on a network without working IPv6, connections do not hang. |
+| Ru internet segment, Russia-only services | Force IPv4 | On | Resolves the preset's domains to IPv4 only: on a network without working IPv6, connections do not hang. The box changes only the address family; Ru internet segment resolves its domains through its Yandex DNS group either way. |
 | FakeIP | DNS | On | Turns on substitute addresses; turning it off removes FakeIP without deleting the preset. |
 | FakeIP | Block HTTPS records | On | Answers HTTPS and SVCB DNS records with an empty response, and apps fall back to plain A and AAAA. |
 | Tailscale networks | DNS | On | The node's DNS resolves the Tailscale network's names. |
@@ -832,7 +832,10 @@ To have one rule decide both where traffic goes and which server resolves its
 domains, turn on **Send DNS to dedicated server** in the DNS section of the
 rule editor. The box adds a paired DNS rule: DNS queries for this rule's
 domains go to the chosen server, `google_udp` by default. You do not build the
-DNS rule by hand.
+DNS rule by hand. Choosing a dedicated server also turns on **Resolve before
+routing** with the same server: with FakeIP above the rule, the DNS rule alone
+never sees the query, and the resolver that matters is the one used before
+routing. Clear the box if you do not want that.
 
 In the same section, the **Force IPv4 (drop AAAA)** box answers AAAA queries
 for the rule's domains locally, and traffic goes over IPv4. It needs no
@@ -877,6 +880,8 @@ After that the app does not add or return servers by itself.
   **Added**. The **⋮** menu → **Add all defaults** adds every template server
   missing from the list. Servers that a new app version brings appear here,
   not in your list.
+- **Reorder servers**: drag a row by the strip on its left, as with DNS
+  rules. The order is kept; locked servers move too.
 - **Locked servers**: a server something depends on shows **used by …** with
   a lock — its switch and Delete are unavailable. It is held by a preset, a
   routing rule's DNS option, a group in the list, the **DNS Final** or
@@ -2392,8 +2397,11 @@ The app icon shortcut does the same: a long press on the icon shows
 **Connect** or **Disconnect**, depending on the VPN state.
 Shortcuts work on Android 11 and newer.
 
-While connected, the notification carries **Stop** and **Reconnect** buttons:
-reconnect straight from the shade.
+While connected, the notification carries **Stop** and **🔄 Restart** buttons.
+With a running Tailscale node that allows Taildrop it also carries **📋 Send**: a
+small window over the current app sends the clipboard text (or a link, to open
+it there) to one of your devices. App Settings → General → Quick connect chooses
+which buttons are shown; all by default.
 
 Automation apps — Tasker, MacroDroid and others — turn the VPN on and off
 and switch servers by events: [Advanced user guide → Automation](ADVANCED_USER_GUIDE.md#automation-the-vpn-turns-on-by-events).
@@ -2411,7 +2419,7 @@ Appearance → Language.
 | English, Русский, 中文（简体） | The chosen language regardless of the system. |
 
 The language switches at once, without restarting the app or the VPN. System
-surfaces are translated too: the notification with Stop and Reconnect buttons,
+surfaces are translated too: the VPN notification and its buttons,
 the Quick Settings tile, the shortcuts. Logs, Debug API and automation events
 stay in English under any choice.
 

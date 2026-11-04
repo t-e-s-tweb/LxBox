@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Done (итерации 1–5; эмулятор 02.11.2026); итерация 6 (отправка с телефона: плитка, ссылка) — не начата |
+| Status | Done (итерации 1–7, эмулятор 02–03.11.2026); итерация 8 — реализована; итерация 9 — In progress (04.11.2026) |
 | Start date | 2026-11-02 |
 | End date | 2026-11-02 |
 | Commits | `1d30e211` `feat(taildrop): отправка и приём файлов — «Поделиться», Send file…, входящие узла (§707)` |
@@ -524,7 +524,7 @@ tag, name, target)` (API 29+ → `MediaStore.Downloads`, затем файл и�
 Текст буфера, ссылки, имена файлов и устройств — не в AppLog, logcat, дамп,
 Debug API.
 
-### Out of scope (итерация 6)
+### Out of scope (итерация 7)
 
 Отправка с телефона: плитка «Send clipboard» и устройство-цель, «Поделиться»
 ссылкой → «Open on <device>» / «Send as note».
@@ -787,3 +787,642 @@ ts-a → ts-b, автосохранение, Save/Delete, отказ при `all
   (`ts-b` → `🕸️ ts-b`), если такой один.
 - Замечание: `disable_taildrop` в `GET /taildrop` у включённых узлов `null`,
   хотя в собранном конфиге `false` — читает поле только как `true`.
+
+## Итерация 6 — страница устройства вместо меню
+
+Владелец 02.11.2026: «по клике на узел давай настройки отображать а не в
+контекстом окне». Сейчас тап по устройству в списке Devices вкладки Network
+открывает нижний лист: пункты копирования, Ping, Send file… и под ними
+переключатели «Clipboard from this device» / «Links from this device». Лист
+сделан под действия; настройки устройства в нём теряются и закрываются
+случайным тапом мимо.
+
+### Solution
+
+Тап по строке устройства открывает **страницу устройства** (полноэкранная,
+со стрелкой назад); нижний лист снимается. Макет согласован с владельцем:
+
+```
+←  LexRouter
+● online · linux · exit node
+⚡ direct 192.168.1.5:41641
+  [ ⌁ Ping ]      [ ⇪ Send file… ]
+  (причина, если Send file… неактивна)
+Addresses
+Name                         LexRouter ⧉
+MagicDNS   lexrouter.tail1234.ts.net   ⧉
+IPv4                      100.89.58.52 ⧉
+IPv6        fd7a:115c:a1e0::8f2d:3a35  ⧉
+Taildrop
+Clipboard from this device        [  ○]
+Links from this device            [  ○]
+```
+
+- **Сводка:** точка и `online`/`offline`, ОС и роли (как второй этаж
+  строки); как подключено — та же иконка пути и текст, что в строке.
+- **Кнопки.** Ping — если есть адрес, открывает тот же лист проверки. Send
+  file… видна всегда; неактивна с причиной под кнопками, первая по порядку:
+  | Условие | Текст |
+  |---------|-------|
+  | Taildrop узла выключен | `Taildrop is off for this node` |
+  | ядро: узлу нельзя отправлять (`canShareFiles` false) | `File sharing is off in this tailnet` |
+  | устройство не в сети | `Device is offline` |
+  | устройство чужое (`shareeNode`) | `Device belongs to another user` |
+  | ядро: не получатель (`canReceiveFiles` false) | `Device can't receive files` |
+
+  Выключенный Allow Taildrop на той стороне заранее не виден: ядро его не
+  публикует (SPEC 149 §4 — другие видят узел получателем). Он выясняется
+  отказом при отправке, как сейчас.
+- **Addresses:** Name, MagicDNS name (если известно), каждый адрес
+  Tailscale с подписью IPv4/IPv6; тап по строке копирует значение,
+  «Copied».
+- **Taildrop:** «Clipboard from this device», «Links from this device» — при
+  прежних условиях (Taildrop узла включён, есть stable ID, не sharee); пишется
+  сразу. Нет условий — блока нет вместе с заголовком.
+- **Живое обновление:** пока страница открыта, вкладка продолжает опрос
+  `GetTailscaleStatus` раз в 3 с (как на экране) и страница берёт запись
+  устройства по stable ID. Устройство пропало из записи — остаётся последнее
+  известное.
+- **Долгий тап по строке** в списке копирует первый адрес без страницы.
+- Новые строки en/ru/zh: `Addresses`, `Actions` не нужен, `Taildrop`,
+  `online`, `offline`, `IPv4`, `IPv6`, `Name`, `MagicDNS` и пять причин.
+
+### Verification
+
+- Widget-тест вкладки: тап по устройству открывает страницу с именем в
+  заголовке, строками адресов, Ping; Send file… неактивна с причиной при
+  выключенном Taildrop узла; долгий тап копирует первый адрес; тап по `+N`
+  страницу не открывает.
+- Эмулятор: тап по устройству → страница; переключатель разрешения → `GET
+  /taildrop/peers` показывает новое значение.
+
+### Result (итерация 6)
+
+- `app/lib/widgets/tailscale_network_tab.dart`: `_openDevice` (страница
+  `_DevicePage` вместо нижнего листа), `_sendBlock` (причины по таблице),
+  `_live` + `_devicePageOpen` (опрос не останавливается, пока страница
+  открыта), долгий тап копирует первый адрес. Строки старого меню (`Copy
+  name`, `Copy MagicDNS name`, `Copy address`, `Copy %s`) сняты из словарей.
+- Тест `test/widgets/tailscale_network_tab_test.dart` — 62/62.
+- Эмулятор 03.11.2026 (ts-a): страница lxbox-emu-b и LexRouter — сводка,
+  Ping / Send file… активны, адреса с IPv4/IPv6, блок Taildrop; LxBox-cph2411
+  (не в сети) — `last seen 30m ago`, Send file… неактивна, «Device is
+  offline.»; переключатель Clipboard на странице → `GET /taildrop/peers`
+  `clipboard: true`, обратно → `false`.
+
+## Итерация 7 — окно «Send clipboard»: буфер и ссылки с телефона
+
+Владелец 03.11.2026: по образцу KDE Connect (кнопка «Send clipboard» в
+постоянном уведомлении, с 1.14.2) — кнопка «📋 Send clipboard» в уведомлении
+VPN; она открывает окно поверх текущего приложения «типа чата» с кнопкой
+отправки; кнопку Reconnect из уведомления убрать; плитку в быстрых
+настройках не делаем. Символ 📋 выбран по рендеру на эмуляторе: иконку у
+кнопки уведомления Android не рисует. Пункты из Out of scope итерации 4
+(«Send clipboard», «Поделиться» ссылкой) — сюда. Формат и правила
+отправителя — [clipboard-sync](../features/032-TAILDROP/FUNCTIONS/clipboard-sync.ru.md),
+контракт `docs/SERVICE_FILES.md` §2–§3, §7.
+
+### Solution
+
+**A. Кнопка в уведомлении VPN** (`ServiceNotification.buildNotification`):
+кнопки `Stop`, `📋 Send clipboard`; `Reconnect` снимается (действие
+`ACTION_RECONNECT` остаётся для автоматизации, §047). «📋 Send clipboard»
+видна, пока уведомление VPN есть; нажатие открывает окно п. B.
+
+**B. Окно «Send clipboard»** — Activity поверх текущего приложения
+(диалоговая тема, нижняя половина экрана, своя задача — не тянет главное
+окно L×Box). Android 10+ даёт читать буфер только окну на переднем плане —
+окно читает его, получив фокус.
+
+```
+┌──────────────────────────────────────┐
+│ 📋  To: LexRouter ▾          ⋮    ✕  │
+├──────────────────────────────────────┤
+│                  ┌─────────────────┐ │
+│                  │ https://ya.ru   │ │  отправлено · 12:40 ✓
+│                  └─────────────────┘ │
+│ ┌─────────────────────┐              │
+│ │ ssh root@10.0.0.5   │              │  с LexRouter · 12:42
+│ └─────────────────────┘              │
+├──────────────────────────────────────┤
+│ ┌──────────────────────────────┐     │
+│ │ текст из буфера (правится)   │ [➤] │
+│ └──────────────────────────────┘     │
+│ [ Open on LexRouter ]  ← если ссылка │
+└──────────────────────────────────────┘
+```
+
+- **Получатель** (`To: … ▾`): свои устройства, которые принимают файлы
+  (`isTaildropTarget`), со всех работающих узлов Tailscale с включённым
+  Allow Taildrop; при нескольких узлах — с подписью узла. Выбор
+  запоминается (`lxbox_taildrop`: тег узла, stable ID, имя) и открывается
+  в следующий раз; запомненного нет в списке — берётся первый.
+- **Поле ввода** заполнено текстом из буфера (или тем, чем поделились,
+  п. C); правится. Буфер пуст / не текст — поле пустое. Клип, помеченный
+  `EXTRA_IS_SENSITIVE` (пароль), показывается в поле так же, как любой
+  другой: перед отправкой видно всё, отправка только по ➤ (решение
+  владельца 03.11.2026; правило SERVICE_FILES §7 п.2 «не отправлять
+  чувствительный клип» относится к отправке без показа, здесь показ есть).
+- **➤** отправляет текст служебным файлом с командой `clipboard`.
+  **Open on <device>** — под полем, только если текст целиком одна ссылка
+  `http(s)` (после trim, без пробелов внутри): отправляет `open_url`.
+- **Лента** — переписка с выбранным устройством: отправленное — справа
+  (время, ✓ при `sent`, текст ошибки под сообщением при отказе); пришедшее
+  от этого устройства и выполненное по разрешению (`clipboard`,
+  `open_url`) — слева. Тап по сообщению копирует текст, «Copied».
+- **Хранение ленты:** только в памяти, пока работает VPN (решение
+  владельца 03.11.2026): остановка VPN (и смерть процесса) ленты стирает,
+  файла нет. Последние 50 сообщений на устройство (ключ — тег узла +
+  stable ID); `⋮ → Clear` чистит ленту устройства.
+- **Отказы** (кнопки неактивны, причина строкой над полем, в этом порядке):
+
+| Условие | Текст |
+|---------|-------|
+| VPN выключен или ни один узел Tailscale не работает | `Start VPN to send` |
+| нет ни одного узла с Allow Taildrop | `Taildrop is off for this node.` |
+| нет устройств-получателей | `No devices accept files` |
+| получатель не в сети | `Device is offline.` |
+| поле пустое | — (кнопки неактивны молча) |
+| текст больше `max_bytes` | `Too large to send` |
+
+  Ошибка ядра при отправке — под сообщением в ленте (`failureText`).
+- Окно не закрывается после отправки (как чат); закрывается ✕, «назад»,
+  тапом вне окна.
+
+**C. «Поделиться» текстом.** `TaildropShareActivity`: текст (не файлы)
+открывает окно п. B с этим текстом в поле вместо буфера. Файлы — как
+сейчас.
+
+**C2. Пункт в меню выделения текста** (владелец 03.11.2026): Activity с
+intent-filter `android.intent.action.PROCESS_TEXT` (`text/plain`), подпись
+«Send to device» (en/ru/zh). Выделил текст в приложении, которое показывает такие пункты → пункт в
+панели выделения (или под ⋮) → окно п. B с `EXTRA_PROCESS_TEXT` в поле
+вместо буфера. Текст в исходном приложении не меняется (результат не
+возвращается, `EXTRA_PROCESS_TEXT_READONLY` не важен).
+
+**C3. Пункты видны только когда отправлять есть через что** (владелец
+03.11.2026): «Send to device» (C2) и L×Box в системном «Поделиться»
+(`TaildropShareActivity`, и файлы, и текст) включены, только если VPN
+поднят И в работающем конфиге есть узел Tailscale с включённым Allow
+Taildrop (в собранном конфиге у endpoint'а `tailscale` нет
+`disable_taildrop: true`). Включаются при старте VPN с таким конфигом и при
+перезагрузке конфига, где такой узел появился; выключаются при остановке VPN
+и при перезагрузке конфига, где такого узла не осталось —
+`PackageManager.setComponentEnabledSetting(..., DONT_KILL_APP)`. При старте
+процесса (`BoxApplication.onCreate`) состояние сверяется с фактическим
+состоянием VPN: после падения процесса пункты не остаются видимыми.
+Компонент выключен, а интент уже пришёл (гонка) — окно показывает «Start
+VPN to send».
+
+**D. Служебный файл** собирается в Kotlin по контракту: имя
+`<name_prefix><UTC YYYYMMDDTHHMMSSZ>-<5 [a-z0-9]><name_suffix>`, тело
+`{"lx":1,"commands":[…]}`; константы — из `service_files.json`
+(`TaildropServiceFiles.spec`). Отправка — тем же нативным путём, что «Send
+file…». Сборщик Debug API (`POST /taildrop/send` с `commands`) переходит на
+него же, чтобы формат был один. Приём (итерация 4) дописывает в ленту
+выполненные команды.
+
+**E. Тексты** en/ru/zh (нативные — `values*/strings.xml`). Текст буфера и
+ссылок — не в AppLog, logcat, Debug API (кроме `reveal` счётчиков приёма,
+как сейчас). Debug API: `GET /taildrop` отдаёт `clip_target` (`tag`,
+`peer_id`; имя — с `reveal`) и число сообщений лент.
+
+### Verification
+
+- Unit: сборщик имени и тела (формат, метка, лимит), «ссылка целиком»
+  (http/https, пробелы, другие схемы), лента (50 на устройство, очистка при
+  остановке VPN).
+- Эмулятор (ts-a → lxbox-emu-b, у ts-b разрешения от lxbox-emu-a): в
+  буфере текст → кнопка уведомления → окно с текстом в поле → ➤ → на
+  приёме `GET /taildrop/service-files` `executed.clipboard` +1, `last`
+  совпал, в ленте справа ✓; ссылка → «Open on» → на приёме уведомление
+  «Link from …»; приём от lxbox-emu-b в окне ts-b слева; Reconnect в
+  уведомлении нет; «Поделиться» текстом → окно с этим текстом; выделение
+  текста → «Send to device» → окно с выделенным текстом; VPN выключен —
+  ни «Send to device», ни L×Box в «Поделиться» нет; включён, но у всех узлов
+  Tailscale Allow Taildrop выключен — тоже нет; включён и галка есть — есть.
+
+### Result (итерация 7)
+
+Коммит `0f0838f7` `feat(taildrop): окно «Send clipboard» … (§707 итер. 7)`.
+
+- **A.** `ServiceNotification.buildNotification`: `Stop` и `📋 Send clipboard`
+  (окно п. B, `PendingIntent.getActivity`); `Reconnect` и строка
+  `notification_action_reconnect` сняты, `ACTION_RECONNECT` остался. Кнопка
+  есть по условию C3 (указание оператора 03.11.2026: без узла с Allow
+  Taildrop её нет).
+- **B.** `vpn/TaildropClipActivity.kt` — нативная Activity без Flutter
+  (`ClipWindowTheme` = DeviceDefault Dialog, светлая/тёмная; низ экрана,
+  половина высоты; `singleTask`, своя `taskAffinity`, `excludeFromRecents`):
+  `To: … ▾` (запоминается в `lxbox_taildrop`: `clip.tag`/`clip.peer`/
+  `clip.name`), лента, причина над полем по таблице, поле с буфером (читается
+  в `onWindowFocusChanged`; клип с `EXTRA_IS_SENSITIVE` — как любой), ➤ и
+  «Open on <device>», ⋮ → Clear, тап по сообщению копирует. Получатели —
+  каждые 10 с и при фокусе (`tailscaleSnapshot`). После ➤ поле очищается
+  (как в чате). Отправка из окна — `Taildrop.send(…, quiet = true)`: без
+  уведомлений отправки, итог (✓ / текст ошибки) — в ленте.
+  `vpn/TaildropClip.kt`: ленты `ClipFeeds` (только в памяти, 50 на
+  устройство, ключ тег + stable ID; стираются в
+  `BoxVpnService.setCurrentStatus(Stopped)`), получатели по снимку,
+  отправка, видимость пунктов, состояние для Debug API.
+- **C / C2 / C3.** `TaildropShareActivity`: текст → окно с этим текстом,
+  файлы — как раньше. `activity-alias` `.vpn.TaildropProcessTextActivity`
+  (PROCESS_TEXT, `text/plain`, «Send to device») на то же окно. Оба
+  компонента в манифесте `enabled="false"`; `TaildropClip.onConfig`
+  включает их при `Started` и после reload, если в конфиге есть `tailscale`
+  без `disable_taildrop: true` (reload, поменявший видимость, перерисовывает
+  уведомление), `onVpnStopped` выключает, `BoxApplication.onCreate` —
+  выключает (VPN нового процесса ещё не поднят).
+- **D.** `TaildropServiceFiles.build` / `body` / `command` / `singleUrl`
+  (константы — реестр, `Spec` получил `timeFormat` и `labelLength`); приём
+  дописывает выполненные `clipboard` и `open_url` в ленту отправителя
+  (`senderID`, пустой — ID из разрешения по имени). Debug API `POST
+  /taildrop/send` с `commands` — через канал `taildropBuildServiceFile`,
+  Dart-сборщик `buildServiceFile` снят.
+- **E.** Строки en/ru/zh в `values*/strings.xml`; текст буфера и ссылок в
+  журнал не пишется. `GET /taildrop`: `clip_target` (`name` — с `reveal`),
+  `clip_feeds[]` (канал `taildropClipState`). `docs/api/debug-api-reference.md`
+  и USER_GUIDE (en/ru, кнопки уведомления) обновлены.
+- **Тесты.** JVM-тесты натива появились впервые: `app/android/app/src/test/
+  kotlin/com/leadaxe/lxbox/vpn/TaildropClipTest.kt` (junit 4 + org.json в
+  `testImplementation`) — сборщик (имя, метка, тело, `max_bytes`), «ссылка
+  целиком», ленты (50 на устройство, очистка при остановке VPN), узел с Allow
+  Taildrop в конфиге, получатели и порядок отказов — 8/8
+  (`./gradlew :app:testDebugUnitTest --tests …TaildropClipTest`). В CI этот
+  прогон не входит. `test/services/debug/taildrop_handler_test.dart` — 16/16.
+  `flutter build apk --debug` собирается; `kotlin_check` / `ui_check --strict`
+  — 0/0.
+- **Не проверено:** всё на устройстве и эмуляторе (окно, чтение буфера по
+  фокусу, PROCESS_TEXT, включение/выключение компонентов, кнопка в
+  уведомлении, лента у получателя). Спеки фичи 032 (`clipboard-sync`,
+  `share-text`) и 014 (кнопки уведомления) ещё описывают плитку / Reconnect —
+  не правились (вне раздела Result).
+
+### Проверка на эмуляторе (итерация 7, 03.11.2026)
+
+- Уведомление VPN: кнопки `Stop` и `📋 Send clipboard`, `Reconnect` нет.
+- Кнопка открывает окно поверх приложения; текст буфера
+  (`ssh root@10.0.0.5`, положен служебным файлом с ts-b) в поле.
+- Владелец сам отправил из окна: в ленте lxbox-emu-b слева пришедшее (1:19),
+  справа отправленное с ✓, поле после отправки пустое.
+- `PROCESS_TEXT` с `https://example.com/lxbox` → окно с текстом, «Open on
+  lxbox-emu-b» → на приёме `executed.open_url: 1`, уведомление «Link from
+  lxbox-emu-a»; в ленте 🔗 и ✓.
+- Пункты (`PROCESS_TEXT`, `SEND text/plain`): VPN выключен — 0, включён —
+  есть; после остановки VPN ленты пусты (`clip_feeds: []`); перезагрузка
+  при поднятом VPN → через 40 с после загрузки пунктов нет (процесс поднят
+  `BootReceiver`, сверка в `BoxApplication.onCreate`). Сразу после холодного
+  старта, до доставки `BOOT_COMPLETED`, пункты ещё видны — окно секунд.
+- Телефон владельца, rc.3 (04.11.2026): «Send to device» есть в меню
+  выделения Chrome (под ⋮), L×Box есть в «Поделиться». В YouTube и Telegram
+  пункта нет: сторонние пункты меню показывает само приложение, это не дефект.
+  Там остаются «Поделиться» и копирование + «📋 Send clipboard».
+
+## Итерация 8 — кнопки уведомления VPN: Restart вернулся, список в настройках
+
+### Problem
+
+Итерация 7 сняла Reconnect из уведомления; пользователи попросили её обратно
+(владелец 04.11.2026). С тремя кнопками длинные подписи теснятся, а нужны они
+не всем.
+
+### Solution
+
+**A. Кнопки и подписи.** Порядок: `Stop`, `🔄 Restart`, `📋 Send`
+(ru `🔄 Рестарт`, `📋 Отправить`; zh `🔄 重连`, `📋 发送`). Значки кнопок Android
+7+ не рисует, поэтому эмодзи — в подписи. `🔄 Restart` шлёт тот же
+`ACTION_RECONNECT`, строка `notification_action_reconnect` возвращена.
+`📋 Send` — бывшая `📋 Send clipboard`, условие C3 итерации 7 прежнее; окно и его
+заголовок не меняются.
+
+**B. Список в App Settings.** Вкладка General, секция Quick connect, под плиткой
+и ярлыком: «VPN notification buttons» и три переключателя Stop, Restart, Send.
+По умолчанию все включены, у существующих установок тоже. Переключение
+применяется к показанному уведомлению сразу, перезапуск VPN не нужен. У Send
+подпись, что кнопка есть только при узле с Allow Taildrop. Выключенный Stop
+убирает только кнопку: остановка остаётся в приложении и в плитке.
+
+**C. Хранение.** Настройка устройства: SharedPreferences
+`lxbox_notification_buttons`, `vpn/NotificationButtons.kt`; не в
+`lxbox_settings.json` и не в бэкапе L×Box, как разрешения Taildrop. Каналы
+`getNotificationButtons`, `setNotificationButton`. Контракт не меняется.
+
+### Result (итерация 8)
+
+Коммит `41674819`, значки строк списка — следующим коммитом. Новый файл
+`vpn/NotificationButtons.kt`; виджет-тест
+`test/screens/general_tab_notification_buttons_test.dart`.
+
+Эмулятор 04.11.2026 (сборка CI 41805444635, English): развёрнутое уведомление
+показывает `Stop`, `🔄 Restart`, `📋 Send` в одну строку с запасом. Нажатие
+`🔄 Restart`: `ACTION_RECONNECT`, остановка, туннель снова `connected`.
+Выключение по одному на живом уведомлении без перезапуска VPN: `Stop 📋 Send` →
+`Stop` → кнопок нет. После `force-stop` и нового старта VPN кнопок нет, в
+настройках все три выключены: значения сохраняются. Включение возвращает все
+три.
+
+Не проверено: телефон; подписи на ru и zh (`🔄 Рестарт`, `📋 Отправить`) на узком
+экране. Значки строк добавлены после прогона на эмуляторе и глазами не смотрены.
+
+## Итерация 9 — настройки Taildrop и кнопок уведомления: из SharedPreferences в хранилище
+
+### Problem
+
+Итерации 4–8 завели настройки в неожиданном месте: файлы
+`shared_prefs/lxbox_taildrop.xml` (разрешения по устройствам `perm.*`,
+автосохранение `autosave.<итоговый тег>`, последний получатель окна `clip.*`) и
+`shared_prefs/lxbox_notification_buttons.xml` (кнопки Stop / Restart / Send).
+О них не знают ни `lxbox_settings.json`, ни бэкап, ни Debug API; при
+переименовании узла значение теряется, удаление узла требует ручной чистки
+(`forgetTags`). Владелец 04.11.2026: архитектурная ошибка. Та же ошибка
+старше: тема `app_theme_mode` лежит в `FlutterSharedPreferences.xml`
+(`main.dart`, `ThemeNotifier`), вне хранилища и бэкапа.
+
+Правило, которое нарушено, в проекте было описано только как механизм §189
+(«три уровня native prefs»), а не как принцип. Разбор с владельцем — отдельная
+сессия 04.11.2026, решения ниже.
+
+### Diagnosis
+
+Единственное место настроек — `lxbox_settings.json`; Kotlin без Flutter
+(автостарт при загрузке, сервис VPN, уведомление) читает одно зеркало
+`boxvpn_boot`, которое наполняет Dart (§189); производные от настроек Dart
+кладёт туда же (`has_tun`, `app_language`). `boxvpn_boot` при этом хранит и
+пять ключей состояния самого Kotlin (`vpn_desired`, `sticky_restart_count`,
+`sticky_restart_window_start`, `last_pushed_locale`,
+`shortcut_relabel_pending`) — им место в кэше Kotlin, не в файле зеркала.
+Kotlin уже разбирает `singbox_config.json` ради `disable_taildrop` и
+`taildrop_directory`; читать `lxbox_settings.json` ему незачем — вопрос
+закрыт правилом.
+
+### Solution
+
+**A. Правило «Где живут настройки»** — `docs/ARCHITECTURE.md`, раздел
+«5. Persistent storage», первым подразделом, без номеров задач в тексте,
+читается сверху вниз: правило → схема → дерево диска → механизм зеркала
+(нынешний текст про три уровня остаётся как описание механизма, номера §189/§192
+— в конец абзаца). Формулировка (русский черновик, в документе по-английски):
+
+1. Настройка — всё, что выбирает пользователь. Все настройки — в
+   `lxbox_settings.json`; настройка узла, папки, подписки, правила — поле её
+   записи. Бэкап, импорт, Debug API и интерфейс знают этот файл и больше ничего.
+2. Kotlin работает без Flutter: при загрузке, в сервисе VPN, в уведомлении. Он
+   читает одно зеркало — SharedPreferences `boxvpn_boot`, и наполняет его Dart:
+   сначала JSON, потом зеркало, полный пересинк на каждом старте. Kotlin
+   настройку не пишет и JSON не открывает. Значение, которое Kotlin нужно и
+   которое вычисляется из настроек (`has_tun`, итоговые теги узлов с опциями
+   Taildrop), идёт в то же зеркало и никуда больше.
+3. Внутренний кэш Kotlin — один файл SharedPreferences `lxbox_native_cache`:
+   то, что Kotlin выбрал или запомнил сам и чего пользователь не настраивал.
+   Пишет и читает Kotlin, Dart о нём не знает, в бэкап не идёт, битый или
+   пустой файл = пустой кэш.
+4. В `shared_prefs/` ровно два файла: `boxvpn_boot` и `lxbox_native_cache`.
+   Новый ключ для Kotlin — строка в списке ключей зеркала или кэша, а не новый
+   `getSharedPreferences`.
+5. Состояние и кэши Dart (`sub_cache/`, логи, `support_state.json`) — свои
+   файлы, в JSON не идут.
+
+Схема в стиле ASCII-деревьев раздела:
+
+```
+   UI · Debug API · backup import
+              │ write
+              ▼
+     lxbox_settings.json ─────────── the only place a setting lives;
+       (SettingsStorage)             an entity's setting = a field of its record
+          │           │
+   read   │           │ push: the keys Kotlin needs + values computed from them
+   (Dart) ▼           ▼
+   in-memory cache   SharedPreferences boxvpn_boot ── the only mirror, Dart writes
+                              │ read only
+                              ▼
+                 Kotlin without Flutter: boot auto-start · VPN service · notification
+                              │ its own choices (last recipient, restart guard, …)
+                              ▼
+                   SharedPreferences lxbox_native_cache ── Kotlin's cache, Kotlin writes
+
+   not settings → memory / own files: sub_cache/, applog, in-flight Taildrop files
+```
+
+`STORAGE.md` — только факты (новые поля записи, новые ключи `native_prefs` и
+`vars`, «в `shared_prefs/` два файла»). `DEVELOPMENT_GUIDE.md` — строка в
+таблицу «куда смотреть» и фраза в процесс: новая настройка — сначала поле в
+JSON. Дерево диска в `ARCHITECTURE.md` (блок `SharedPreferences (Android)`)
+перечисляет оба файла с их ключами; `lxbox_automation` и
+`FlutterSharedPreferences` в этой итерации не трогаются, записаны там как
+«проверить отдельно» (решение владельца).
+
+**B. Taildrop — поля записи узла.** Разрешения по устройствам снимаются
+(решение владельца 04.11.2026: детализация лишняя). Два новых поля записи
+узла `server` (в корне и член папки), рядом с `skip_tailscale_presets` /
+`allow_lan`, те же правила: пишется только `true`, в конфиг не идут, едут в
+бэкапе, у узла подписки записи нет — полей нет:
+
+- `taildrop_commands` — принимать буфер и ссылки от своих устройств (sharee не
+  считаются своими); по умолчанию выключено;
+- `taildrop_autosave` — сохранять принятое в Downloads без вопроса; по
+  умолчанию выключено; Android 10+ как раньше.
+
+`disable_taildrop` остаётся в теле как поле ядра. Модель: `UserServer` /
+член папки, `source_record.dart` (`_recordFlagsToRecord`, `_serverKeys`,
+`_memberKeys`), терпимое чтение по образцу `allow_lan`. Контракт `BACKUP.md` и
+`SERVICE_FILES.md` §5 правит лаунчер (запрос отправлен сессии «Desktop
+Tailscale drop» 04.11.2026); `app/contract` здесь не трогать, синк —
+`git archive` после их коммита.
+
+**C. Доставка до Kotlin.** Kotlin по-прежнему сравнивает итоговый тег от ядра
+со строкой. Dart кладёт в зеркало `boxvpn_boot` два производных множества
+итоговых тегов: `taildrop_commands_tags`, `taildrop_autosave_tags`
+(`StringSet`). Один канал `setTaildropTags {commands: [...], autosave: [...]}`
+заменяет оба множества целиком. Пушится: после каждой успешной сборки конфига
+(там же, где уходит `has_tun`), при переключении любой из галок сразу (без
+пересборки, при работающем VPN должно действовать немедленно) и на старте
+Dart в `bootstrapAndSyncNativePrefs` (как `app_language`). Итоговый тег — тот,
+что сборка присваивает записи; если на пути переключения галки сборка
+недоступна — `TagResolver.displayTag(prefix папки, тег)`; расхождение при
+дедупе тегов сборкой — безопасный отказ (галка не действует), если такое
+найдётся — в Result. Kotlin на событии ядра: `TaildropServiceFiles.allowed`
+→ `tag ∈ taildrop_commands_tags`; `Taildrop.isAutoSave` → `tag ∈
+taildrop_autosave_tags`. Если `autosave`-множество выросло — `sweepInboxesAsync`
+(поведение прежнего `taildropSetAutoSave(enabled=true)`).
+
+Удаляется: `perm.*`, `permissions`/`setPermission`/`forgetTags` в
+`TaildropServiceFiles.kt`; `autosave.*`, `setAutoSave`/`forgetAutoSave` в
+`Taildrop.kt`; каналы `taildropSetAutoSave`, `taildropAutoSave`,
+`taildropPermissions`, `taildropSetPermission`, `taildropForgetAutoSave` с обеих
+сторон; переключатели разрешений на странице устройства (итерация 6);
+маршруты Debug API разрешений (итерация 5), маршрут автосохранения читает и
+пишет поле записи; вызовы `forgetAutoSave` при переименовании/удалении узла.
+
+**D. Панель Taildrop вкладки Network.** Два переключателя у своего узла:
+«Accept clipboard and links from my devices» (новый, подпись о sharee) и
+«Save received files to Downloads» (как был). Оба читают и пишут поле записи
+через тот же путь, что `allow_lan` на этой вкладке (`onSaveFields` /
+сохранение записи), по образцу соседних блоков, без своих Save. У узла
+подписки (`node_inspect_screen`) переключателей нет. Галка выключается вместе
+с Allow Taildrop, как сейчас у автосохранения.
+
+**E. Кнопки уведомления.** Три bool-ключа секции `native_prefs`:
+`notification_stop`, `notification_restart`, `notification_send`, по умолчанию
+`true`, в бэкапе; зеркало в `boxvpn_boot` теми же именами по образцу
+`core_logs_verbose` (§345: `NativePrefsKeys`, дефолты, `_syncJsonToNative`,
+геттер/сеттер в `BootReceiver`, каналы). `NotificationButtons.kt` читает
+зеркало; `lxbox_notification_buttons`, каналы `getNotificationButtons` /
+`setNotificationButton` удаляются, вкладка General пишет через
+`SettingsStorage.setNativeBool`; уведомление обновляется сразу, как в итерации 8.
+Переноса нет: файл не выходил в релиз.
+
+**F. Тема.** Ключ секции `native_prefs`: `app_theme_mode` (`system` | `light`
+| `dark`, дефолт `system`), по образцу `memory_limit`, в бэкапе. Не `vars`: в
+бэкап из `vars` выходят только portable-переменные шаблона
+(`lx_backup.dart`), `app_language` туда не попадает, а тема должна (совет
+лаунчера 04.11.2026). `ThemeNotifier` читает и пишет через `SettingsStorage`.
+Перенос один раз на старте: если в `native_prefs` ключа нет, а в
+`FlutterSharedPreferences` есть `app_theme_mode` — взять его и ключ из prefs
+удалить. В зеркало `boxvpn_boot` не идёт: Kotlin его не читает, нативное окно
+берёт ночной режим из системы (`TaildropClipActivity`). Секцию `native_prefs`
+с её ключами лаунчер объявляет в «Поля стороны LxBox» `BACKUP.md` (запрос
+отправлен; контракт 1.1.157 `e8a744ad` уже несёт §5 и два поля узла).
+
+**Дополнение 04.11.2026 (решение владельца, контракт 1.1.159 `be1c2bca`,
+D-142): «по умолчанию если разрешён Taildrop, то и всё остальное разрешено
+(сохранение в Downloads и команды); при миграции старые перестать читать, а
+новые дефолт сделать по умолчанию».** Поля записи узла меняют имя и знак:
+`disable_taildrop_commands`, `disable_taildrop_autosave` (bool, пишется
+только `true`, отсутствие = включено; у узла подписки полей нет, в конфиг не
+идут). Имена `taildrop_commands` / `taildrop_autosave` из 1.1.157 не читаются:
+версия в релиз не выходила. Переноса `autosave.<тег>` из rc.3 нет: на старте
+только `deleteLegacyPrefs`, канал `taildropLegacyAutosaveTags` снимается.
+Доставка до Kotlin (C) — множества ВЫКЛЮЧЕННЫХ: `taildrop_commands_off_tags`,
+`taildrop_autosave_off_tags`; Kotlin: разрешено = Allow Taildrop у узла в
+конфиге (как сейчас, `taildropDirectories`) и тег ∉ множества; расхождение
+тега при дедупе теперь даёт умолчание «включено», что и требуется. Сброс
+`autosave_off` для тега (включили) → `sweepInboxesAsync`. Переключатели на
+панели и Debug API (`/taildrop/settings`: `autosave`, `commands`) остаются в
+смысле «включено»: хранилище хранит знак наоборот. Норма отправителя ниже
+без изменений и при включённом по умолчанию приёме — единственный барьер.
+
+**Норма отправителя (контракт 1.1.157).** Команда служебного файла
+выполняется, только если тег узла в `taildrop_commands_tags`, `senderID`
+непустой, пир с этим `senderID` есть в статусе узла и он не sharee. Отказ без
+подстановки по `senderName`: после перезапуска ядра у лежащих файлов
+`senderID` пуст — команды не выполняются. Устройства не запоминаются.
+
+**G. Кэш Kotlin.** Новый объект `vpn/NativeCache.kt`, файл
+`lxbox_native_cache`. Переезжают: последний получатель окна Send
+(`clip_tag`, `clip_peer`, `clip_name` из `TaildropClip.kt`) и пять ключей
+состояния из `BootReceiver.kt` (`vpn_desired`, `sticky_restart_count`,
+`sticky_restart_window_start`, `last_pushed_locale`,
+`shortcut_relabel_pending`) — публичные геттеры/сеттеры `BootReceiver`
+остаются и делегируют, смысл не меняется. Старые значения этих пяти ключей в
+`boxvpn_boot` не переносятся (состояние одного запуска) и удаляются при первом
+обращении.
+
+**H. Перенос из rc.3 и чистка.** Канал `taildropLegacyAutosaveTags()` — список
+итоговых тегов с `autosave.*` из `lxbox_taildrop` (или пустой). Dart на старте
+после загрузки хранилища: для каждого тега найти запись, чей итоговый тег
+совпадает (та же функция, что считает множества в C), поставить
+`taildrop_autosave: true`; затем канал `deleteLegacyPrefs()` —
+`Context.deleteSharedPreferences` для `lxbox_taildrop` и
+`lxbox_notification_buttons` (minSdk 24, API есть). Файла нет → канал даёт
+пустой список, перенос не повторяется. `perm.*` не переносятся: смысл иной.
+
+**I. Доки фичи.** `032-TAILDROP/FUNCTIONS/inbox*.md` (строка «Автосохранение»:
+поле записи, в бэкапе), `clipboard-sync*.md` (таблица: разрешения → одна
+настройка узла; строка «Бэкап»; состояние), `USER_GUIDE*.md`, если там есть
+разрешения по устройствам; CHANGELOG Unreleased.
+
+### Verification
+
+Точечно, не каталогами (правила CI): `test/models/skip_presets_record_test.dart`
+— два новых поля (чтение, запись только `true`, отсутствие = `false`);
+`test/contract/lx_backup_node_flags_test.dart` — поля в бэкапе;
+`test/services/native_prefs_memory_limit_test.dart` как образец — три ключа
+кнопок и перенос темы; новый тест производных множеств (запись в корне, член
+папки с `tag_policy`, выключенный узел, узел подписки — не входит);
+`test/screens/general_tab_notification_buttons_test.dart` — на новый путь;
+Kotlin `TaildropClipTest.kt` — запомненный получатель из `NativeCache`.
+Golden-фикстуры `rich_v0`/`avd_v0` трогать только если падают из-за новых
+ключей `native_prefs`.
+
+Эмулятор (владелец или исполнитель, 4 сценария): 1) галка Save to Downloads у
+узла в папке → переименовать папку → файл с другого устройства сохраняется
+без вопроса; 2) автостарт при загрузке без открытия приложения → файл с
+командой clipboard выполняется при включённой галке и игнорируется при
+выключенной; 3) обновление с rc.3 с включённым autosave → галка стоит, файла
+`lxbox_taildrop.xml` нет; 4) кнопки уведомления переключаются на живом
+уведомлении, после `force-stop` значения те же, `lxbox_notification_buttons.xml`
+нет.
+
+### Result (итерация 9)
+
+Реализовано 04.11.2026, ещё не закоммичено (коммит — по слову владельца).
+Контракт 1.1.157 (`e8a744ad`: `SERVICE_FILES` §5, два поля узла, норма
+отправителя) и 1.1.158 (`b8d9bdc1`: секция `native_prefs` с 12 ключами в
+«Поля стороны LxBox») синхронизированы, корпус `v10_lxbox_fields` проходит.
+
+Dart: `services/taildrop_tags_sync.dart` (новый), `source_record.dart`,
+`server_list.dart`, `subscription_controller.dart`, `settings_storage.dart` +
+`native_prefs.dart`, `box_vpn_client.dart` + `method_names.dart`,
+`cc_channel.dart` (пять методов и `CcTaildropAutoSave` сняты),
+`tailscale_network_tab.dart`, экраны узла и General, Debug API
+(`/taildrop/permissions` снят, `/taildrop/settings` принимает `autosave` и
+`commands`), LX-бэкап (`native_prefs` в `_rootKeys`/`_root10Keys`, экспорт,
+импорт через `applyNativePrefsBackup`), `main.dart` (перенос темы и autosave
+из rc.3 до `bootstrapAndSyncNativePrefs`), строки ru/zh. Kotlin:
+`vpn/NativeCache.kt` (новый), `BootReceiver.kt` (множества тегов, три ключа
+кнопок, делегирование состояния в кэш), `NotificationButtons.kt`,
+`Taildrop.kt`, `TaildropClip.kt`, `TaildropServiceFiles.kt`
+(`allowed(ctx, tag, senderId, ownPeers)`), `VpnPlugin.kt`. Доки:
+`ARCHITECTURE.md` § 5 «Where a setting lives» + схема, `STORAGE.md`,
+`DEVELOPMENT_GUIDE.md`, фича 032 (FEATURE + FUNCTIONS), CHANGELOG.
+
+Решения исполнителей: итоговый тег записи берётся из карты последней сборки
+(`lastEmittedTagMap`, учитывает суффикс `-N` дедупа), до первой сборки —
+`TagResolver.displayTag` (при дедупе галка не действует до пересборки —
+безопасный отказ, тест есть); выключенные узлы в множества не входят; галки
+Taildrop конфиг грязным не делают (`keepDirtyFlag`); признак Android 10+ —
+`device_info_plus`; команда выполняется, только если `senderID` непустой и
+есть среди пиров узла без `sharee_node` (снимок статуса берётся лениво, раз на
+пачку, только при включённой галке). `goneTailscaleTags` и обработчик
+`taildropAutoSaveState` сняты как мёртвые.
+
+Тесты точечно, все зелёные: `taildrop_tags_sync_test` (новый),
+`native_prefs_notification_theme_test` (новый), `skip_presets_record_test`,
+`lx_backup_node_flags_test`, `backup_corpus_test` + `lx_backup_roundtrip_test`
+(`json_schema_lite.dart` получил `pattern` — без него падал
+`native_prefs.memory_limit` из корпуса), `general_tab_notification_buttons_test`,
+`taildrop_handler_test`, `tailscale_network_tab_test`, `golden_backup_test`,
+`backup_service_test`, `folder_test`, `tailscale_state_store_test`;
+`dart analyze lib test` чистый.
+
+Не проверено: компиляция Kotlin (Gradle локально не гоняли — CI), эмулятор
+(четыре сценария из Verification), телефон. Тема после импорта бэкапа и
+смены Workspaces перечитывается без перезапуска (решение владельца «хук»):
+`SettingsStorage.nativePrefsGeneration` растёт в `applyNativePrefsBackup` и
+`bootstrapAndSyncNativePrefs`, `ThemeNotifier` слушает его (тест в
+`native_prefs_notification_theme_test`). Известное ограничение: Kotlin-теста
+на `NativeCache` нет (в тестах нет контекста/Robolectric).
+Открыто у лаунчера: `taildrop_double_copy` (двойное копирование, не в бэкапе)
+— решение владельца; перевод лаунчера на новые поля — его отдельная задача.
+
+Переделка под 1.1.159 (тот же день, следующим коммитом): поля
+`disable_taildrop_commands` / `disable_taildrop_autosave`, имена 1.1.157 не
+читаются (тесты «не читаются» в `skip_presets_record_test` и
+`lx_backup_node_flags_test`); зеркало — `taildrop_commands_off_tags` /
+`taildrop_autosave_off_tags`, канал `setTaildropTags(commands_off, autosave_off)`;
+`taildropLegacyAutosaveTags` снят, на старте только `deleteLegacyPrefs`;
+переключатели и Debug API — в смысле «включено», по умолчанию включены; до
+первого пуша из Dart множества пусты и Kotlin считает обе функции
+включёнными у всех узлов с Allow Taildrop. Точечные тесты (7 файлов, 157)
+зелёные, `dart analyze` чистый; Kotlin — CI: `checks` 41827267728 и
+`build-fast` 41827826525 (компиляция Kotlin) зелёные на `8df0910f`.
+
+Контракт 1.1.160 (`1351dd6e`, D-143, владелец поручил согласовать напрямую с
+сессией лаунчера): два поля записи узла tailscale. `state_dir_id` (string,
+обе) — у нас НЕ применяется: каталог состояния к тегу не привязан с §445
+(индекс `tailscale_state.json` по `id` записи), поле только переносится без
+потерь: у совпавшего по телу узла не меняется, новому узлу с занятым именем
+выдаётся другое (`ts-xxxxxx`), своим узлам без поля не генерируется.
+`taildrop_double_copy` (`{peer_id, peer_name?}`, только лаунчер) — в известные
+ключи, молча пропускается, не провозится.
