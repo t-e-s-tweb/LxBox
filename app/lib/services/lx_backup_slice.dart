@@ -106,6 +106,8 @@ const List<BackupField> kBackupFields = [
   BackupField(BackupRecord.subscription, 'last_update_attempt', _r),
   BackupField(BackupRecord.subscription, 'last_update_status', _r),
   BackupField(BackupRecord.subscription, 'last_node_count', _r),
+  // Бюджет узлов — размер выдачи до обрезки; рантайм машины.
+  BackupField(BackupRecord.subscription, 'total_node_count', _r),
   BackupField(BackupRecord.subscription, 'consecutive_fails', _r),
   // §565 / задача 570 — выбор члена групп ручного рода подписки: у
   // `sourceSubscription` схемы поля нет; выбор — рантайм машины (как выбор
@@ -134,6 +136,8 @@ const List<BackupField> kBackupFields = [
   BackupField(BackupRecord.server, 'allow_local', _c),
   BackupField(BackupRecord.server, 'allow_lan', _c),
   BackupField(BackupRecord.server, 'allow_gateway', _c),
+  // Пресет `tunnel-routes` — поле записи узла.
+  BackupField(BackupRecord.server, 'own_routes', _c),
   // §707 итер. 9 (контракт 1.1.159) — Taildrop узла, знак «выключено».
   BackupField(BackupRecord.server, 'disable_taildrop_commands', _c),
   BackupField(BackupRecord.server, 'disable_taildrop_autosave', _c),
@@ -176,6 +180,8 @@ const List<BackupField> kBackupFields = [
   BackupField(BackupRecord.folderNode, 'allow_local', _c),
   BackupField(BackupRecord.folderNode, 'allow_lan', _c),
   BackupField(BackupRecord.folderNode, 'allow_gateway', _c),
+  // Пресет `tunnel-routes` — поле записи узла.
+  BackupField(BackupRecord.folderNode, 'own_routes', _c),
   // §707 итер. 9 (контракт 1.1.159) — Taildrop узла, знак «выключено».
   BackupField(BackupRecord.folderNode, 'disable_taildrop_commands', _c),
   BackupField(BackupRecord.folderNode, 'disable_taildrop_autosave', _c),

@@ -608,6 +608,15 @@
   "Outbound for peers allowed to use this device as a gateway.": {
     "value": "Исходящий канал для пиров, которым разрешено ходить через устройство как через шлюз."
   },
+  "Tunnel routes": {
+    "value": "Сети туннелей"
+  },
+  "Send to each client tunnel only the networks it announces: WireGuard allowed IPs, routes pushed by an OpenVPN or OpenConnect server. Everything else follows the rules below. Turned on per tunnel, in the tunnel's own settings.": {
+    "value": "Каждому клиентскому туннелю — только сети, которые он объявляет: allowed IPs у WireGuard, маршруты от сервера OpenVPN или OpenConnect. Остальное идёт по правилам ниже. Включается у каждого туннеля в его собственных настройках."
+  },
+  "Resolve the names a tunnel announces with the tunnel's own DNS.": {
+    "value": "Разрешать имена, которые объявляет туннель, через DNS самого туннеля."
+  },
   "Tailscale networks": {
     "value": "Сети Tailscale"
   },
@@ -716,8 +725,14 @@
   "Fake IPv4 addresses are taken from this range (CIDR). Change it if the default range is used in your network or excluded from the tunnel. Changing it resets the saved fake addresses.": {
     "value": "Фейковые IPv4-адреса берутся из этого диапазона (CIDR). Поменяйте, если стандартный диапазон занят в вашей сети или исключён из туннеля. Смена сбрасывает сохранённые фейковые адреса."
   },
-  "Fake IPv6 addresses are taken from this range (CIDR). Leave empty to answer AAAA queries with no address. At least one pool must be set.": {
-    "value": "Фейковые IPv6-адреса берутся из этого диапазона (CIDR). Оставьте пустым, чтобы на AAAA-запросы отвечать без адреса. Хотя бы один пул должен быть задан."
+  "Fake IPv6 addresses": {
+    "value": "Фейковые IPv6-адреса"
+  },
+  "Answer AAAA queries with a fake address from the IPv6 pool. Turn off to answer AAAA queries with no address; the IPv4 pool stays in use.": {
+    "value": "Отвечать на AAAA-запросы фейковым адресом из пула IPv6. Выключите, чтобы на AAAA-запросы отвечать без адреса; пул IPv4 продолжает работать."
+  },
+  "Fake IPv6 addresses are taken from this range (CIDR). Used while \"Fake IPv6 addresses\" is on. Changing it resets the saved fake addresses.": {
+    "value": "Фейковые IPv6-адреса берутся из этого диапазона (CIDR). Действует, пока включено «Фейковые IPv6-адреса». Смена сбрасывает сохранённые фейковые адреса."
   },
   "Split default route": {
     "value": "Разделённый маршрут по умолчанию"
@@ -809,8 +824,20 @@
   "QUIC": {
     "value": "QUIC"
   },
-  "MASQUE (HTTP/3), Hysteria2 and TUIC.": {
-    "value": "MASQUE (HTTP/3), Hysteria2 и TUIC."
+  "AWG masquerade": {
+    "value": "Маскировка AWG"
+  },
+  "When an AmneziaWG node sends its masquerade packets (ip=quic, i1…) before the handshake. All paths: always, also through another node. Direct only: when the node dials from this device's own socket; through another node a single handshake packet goes out.": {
+    "value": "Когда узел AmneziaWG отправляет маскировочные пакеты (ip=quic, i1…) перед рукопожатием. All paths — всегда, в том числе через другой узел. Direct only — когда узел звонит с собственного сокета устройства; через другой узел уходит один пакет рукопожатия."
+  },
+  "Direct only": {
+    "value": "Только напрямую"
+  },
+  "All paths (default)": {
+    "value": "Все пути (по умолчанию)"
+  },
+  "MASQUE (HTTP/3), Hysteria2, TUIC and AWG with QUIC masquerade (ip=quic).": {
+    "value": "MASQUE (HTTP/3), Hysteria2, TUIC и AWG с маскировкой под QUIC (ip=quic)."
   },
   "Anti-sniff decoy": {
     "value": "Обманка от сниффинга"
@@ -821,8 +848,8 @@
   "Close a MASQUE tunnel that carried no traffic for this long; it reconnects on next use. A node's own idle timeout wins.": {
     "value": "Закрывать туннель MASQUE, по которому столько времени не было трафика; он переподключится при следующем использовании. Собственный таймаут простоя узла сильнее."
   },
-  "Send one junk byte before the QUIC handshake so a relay that sniffs UDP cannot redirect the connection by its SNI. Through detour: only connections carried by another node; Direct: only this device's own socket; All: both.": {
-    "value": "Отправлять один мусорный байт перед QUIC-рукопожатием, чтобы релей, который сниффит UDP, не перенаправил соединение по SNI. Through detour — только соединения, которые несёт другой узел; Direct — только собственный сокет устройства; All — оба случая."
+  "Send one junk byte before the QUIC handshake so a relay that sniffs UDP cannot redirect the connection by its SNI. Through detour: only connections carried by another node; Direct: only this device's own socket; All: both. Also covers AWG nodes whose masquerade imitates QUIC (ip=quic).": {
+    "value": "Отправлять один мусорный байт перед QUIC-рукопожатием, чтобы релей, который сниффит UDP, не перенаправил соединение по SNI. Through detour — только соединения, которые несёт другой узел; Direct — только собственный сокет устройства; All — оба случая. Действует и на узлы AWG с маскировкой под QUIC (ip=quic)."
   },
   "Through detour (default)": {
     "value": "Через detour (по умолчанию)"

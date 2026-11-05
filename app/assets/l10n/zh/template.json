@@ -608,6 +608,15 @@
  "Outbound for peers allowed to use this device as a gateway.": {
   "value": "允许将此设备用作网关的对等方所用的出站。"
  },
+ "Tunnel routes": {
+  "value": "隧道路由"
+ },
+ "Send to each client tunnel only the networks it announces: WireGuard allowed IPs, routes pushed by an OpenVPN or OpenConnect server. Everything else follows the rules below. Turned on per tunnel, in the tunnel's own settings.": {
+  "value": "每个客户端隧道只接收它自己公布的网络：WireGuard 的 allowed IPs，OpenVPN 或 OpenConnect 服务器推送的路由。其余流量按下方规则处理。在各隧道自己的设置中逐个开启。"
+ },
+ "Resolve the names a tunnel announces with the tunnel's own DNS.": {
+  "value": "使用隧道自身的 DNS 解析该隧道公布的域名。"
+ },
  "Tailscale networks": {
   "value": "Tailscale 网络"
  },
@@ -716,8 +725,14 @@
  "Fake IPv4 addresses are taken from this range (CIDR). Change it if the default range is used in your network or excluded from the tunnel. Changing it resets the saved fake addresses.": {
   "value": "伪 IPv4 地址从此范围（CIDR）分配。如果默认范围在您的网络中已被使用或被排除在隧道之外，请更改。更改会重置已保存的伪地址。"
  },
- "Fake IPv6 addresses are taken from this range (CIDR). Leave empty to answer AAAA queries with no address. At least one pool must be set.": {
-  "value": "伪 IPv6 地址从此范围（CIDR）分配。留空则对 AAAA 查询返回无地址的应答。至少需要设置一个地址池。"
+ "Fake IPv6 addresses": {
+  "value": "伪 IPv6 地址"
+ },
+ "Answer AAAA queries with a fake address from the IPv6 pool. Turn off to answer AAAA queries with no address; the IPv4 pool stays in use.": {
+  "value": "用 IPv6 地址池中的伪地址应答 AAAA 查询。关闭后对 AAAA 查询返回无地址的应答；IPv4 地址池继续使用。"
+ },
+ "Fake IPv6 addresses are taken from this range (CIDR). Used while \"Fake IPv6 addresses\" is on. Changing it resets the saved fake addresses.": {
+  "value": "伪 IPv6 地址从此范围（CIDR）分配。仅在“伪 IPv6 地址”开启时使用。更改会重置已保存的伪地址。"
  },
  "Split default route": {
   "value": "拆分默认路由"
@@ -809,14 +824,26 @@
   "QUIC": {
     "value": "QUIC"
   },
-  "MASQUE (HTTP/3), Hysteria2 and TUIC.": {
-    "value": "MASQUE (HTTP/3)、Hysteria2 和 TUIC。"
+  "AWG masquerade": {
+    "value": "AWG 伪装"
+  },
+  "When an AmneziaWG node sends its masquerade packets (ip=quic, i1…) before the handshake. All paths: always, also through another node. Direct only: when the node dials from this device's own socket; through another node a single handshake packet goes out.": {
+    "value": "AmneziaWG 节点何时在握手前发送伪装数据包（ip=quic、i1…）。All paths：始终发送，包括经由其他节点时。Direct only：仅当节点从本设备自身的套接字拨号时；经由其他节点时只发送一个握手包。"
+  },
+  "Direct only": {
+    "value": "仅直连"
+  },
+  "All paths (default)": {
+    "value": "所有路径（默认）"
+  },
+  "MASQUE (HTTP/3), Hysteria2, TUIC and AWG with QUIC masquerade (ip=quic).": {
+    "value": "MASQUE (HTTP/3)、Hysteria2、TUIC 以及伪装成 QUIC（ip=quic）的 AWG。"
   },
   "Anti-sniff decoy": {
     "value": "防嗅探诱饵"
   },
-  "Send one junk byte before the QUIC handshake so a relay that sniffs UDP cannot redirect the connection by its SNI. Through detour: only connections carried by another node; Direct: only this device's own socket; All: both.": {
-    "value": "在 QUIC 握手前发送一个垃圾字节，使嗅探 UDP 的中继无法按 SNI 重定向连接。Through detour：仅由其他节点承载的连接；Direct：仅本设备自身的套接字；All：两者皆有。"
+  "Send one junk byte before the QUIC handshake so a relay that sniffs UDP cannot redirect the connection by its SNI. Through detour: only connections carried by another node; Direct: only this device's own socket; All: both. Also covers AWG nodes whose masquerade imitates QUIC (ip=quic).": {
+    "value": "在 QUIC 握手前发送一个垃圾字节，使嗅探 UDP 的中继无法按 SNI 重定向连接。Through detour：仅由其他节点承载的连接；Direct：仅本设备自身的套接字；All：两者皆有。也适用于伪装成 QUIC（ip=quic）的 AWG 节点。"
   },
   "MASQUE idle timeout": {
     "value": "MASQUE 空闲超时"

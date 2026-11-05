@@ -78,6 +78,9 @@
   "%1$s · %2$d events": {
     "value": "%1$s · %2$d соб."
   },
+  "%1$s: invalid regex %2$s": {
+    "value": "%1$s: неверная регулярка %2$s"
+  },
   "%d app settings": {
     "value": {
       "one": "%d настройка приложения",
@@ -100,6 +103,14 @@
       "few": "%d в цепочке",
       "many": "%d в цепочке",
       "other": "%d в цепочке"
+    }
+  },
+  "%d domain regex": {
+    "value": {
+      "one": "%d regex домена",
+      "few": "%d regex домена",
+      "many": "%d regex домена",
+      "other": "%d regex домена"
     }
   },
   "%d elements": {
@@ -356,6 +367,14 @@
   },
   "%d ok": {
     "value": "%d ок"
+  },
+  "%d package regex": {
+    "value": {
+      "one": "%d regex пакета",
+      "few": "%d regex пакета",
+      "many": "%d regex пакета",
+      "other": "%d regex пакета"
+    }
   },
   "%d packages copied": {
     "value": {
@@ -808,11 +827,20 @@
   "Custom server": {
     "value": "Свой сервер"
   },
+  "Domain regex": {
+    "value": "Regex домена"
+  },
   "Enter an IP address": {
     "value": "Введите IP-адрес"
   },
   "Fixed IP": {
     "value": "Фиксированный IP"
+  },
+  "Go RE2, matched anywhere in the domain, e.g. %s": {
+    "value": "Go RE2, совпадение в любом месте домена, например %s"
+  },
+  "Go RE2, matched anywhere in the package name, e.g. %s": {
+    "value": "Go RE2, совпадение в любом месте имени пакета, например %s"
   },
   "How domains matched by this rule are resolved.": {
     "value": "Как резолвятся домены, совпавшие с этим правилом."
@@ -837,6 +865,9 @@
   },
   "One address per line, IPv4 or IPv6.": {
     "value": "По адресу на строку, IPv4 или IPv6."
+  },
+  "Package name regex": {
+    "value": "Regex имени пакета"
   },
   "Resolve before routing": {
     "value": "Резолвить до маршрутизации"
@@ -1147,6 +1178,32 @@
   },
   "Auto-ping after connect": {
     "value": "Автопинг после подключения"
+  },
+  "Parallel checks": {
+    "value": "Параллельные проверки"
+  },
+  "How many servers the ping and Test servers measure at once. Fewer requests look quieter to the network, more finish faster. Range %1$d..%2$d, default %3$d": {
+    "value": "Сколько серверов пинг и «Test servers» меряют одновременно. Меньше запросов — тише для сети, больше — быстрее. Диапазон %1$d..%2$d, по умолчанию %3$d"
+  },
+  "Node budget": {
+    "value": "Бюджет узлов"
+  },
+  "Above %d the app may freeze or be killed by the system": {
+    "value": "Больше %d — приложение может зависнуть или быть закрыто системой"
+  },
+  "%2$d of %1$d nodes": {
+    "value": {
+      "one": "%2$d из %1$d узла",
+      "few": "%2$d из %1$d узлов",
+      "many": "%2$d из %1$d узлов",
+      "other": "%2$d из %1$d узла"
+    }
+  },
+  "Node budget in App settings": {
+    "value": "Бюджет узлов — в настройках приложения"
+  },
+  "Budget used by manual servers": {
+    "value": "Бюджет занят ручными серверами"
   },
   "Auto-record is off": {
     "value": "Автозапись выключена"
@@ -4599,6 +4656,15 @@
   "Peers route any traffic through this device; it leaves through the outbound chosen in the Tunnel ingress preset.": {
     "value": "Пиры пускают через устройство любой трафик; он уходит в исходящий канал, выбранный в пресете «Входящие из туннелей»."
   },
+  "Only its own networks": {
+    "value": "Только свои сети"
+  },
+  "Send to this tunnel only the networks it announces. It works alongside the selected server and does not need to be chosen as a direction.": {
+    "value": "В этот туннель идут только сети, которые он объявляет. Работает вместе с выбранным сервером, выбирать туннель Направлением не нужно."
+  },
+  "This tunnel announces the default route, so it takes all traffic.": {
+    "value": "Туннель объявляет маршрут по умолчанию и забирает весь трафик."
+  },
   "No matching nodes": {
     "value": "Нет подходящих узлов"
   },
@@ -5511,6 +5577,9 @@
   },
   "Why it happens": {
     "value": "Почему так"
+  },
+  "Wi-Fi networks": {
+    "value": "Сети Wi-Fi"
   },
   "Wi-Fi rules need permissions": {
     "value": "Правилам Wi-Fi нужны разрешения"
@@ -6902,8 +6971,11 @@
   "Core: lx.mtu_align. A node over a tunnel gets a packet size that fits into it: mtu for WireGuard and MASQUE, the initial packet size for Hysteria2 and TUIC. Values are never raised.": {
     "value": "Ядро: lx.mtu_align. Узел поверх туннеля получает размер пакета, который в туннель влезает: mtu у WireGuard и MASQUE, начальный размер пакета у Hysteria2 и TUIC. Значения никогда не повышаются."
   },
-  "Core: lx.quic_sniff_decoy. A relay with UDP sniffing (Xray destOverride quic) rewrites the destination by the SNI of the first QUIC packet; a junk first byte makes it give up. Servers drop the byte. A DPI on your own uplink may react to it, hence Through detour by default.": {
-    "value": "Ядро: lx.quic_sniff_decoy. Релей со сниффингом UDP (Xray destOverride quic) подменяет назначение по SNI из первого QUIC-пакета; мусорный первый байт заставляет его отступиться. Серверы этот байт отбрасывают. DPI вашего собственного канала может на него среагировать, поэтому по умолчанию — Through detour."
+  "Core: lx.awg_masquerade. The masquerade burst of an AWG endpoint (ip=quic, i1…) precedes the handshake. Through a detour a relay may take it for a QUIC flow and redirect it by SNI; Anti-sniff decoy guards against that. Direct only drops the burst on such paths.": {
+    "value": "Ядро: lx.awg_masquerade. Маскировочная пачка эндпоинта AWG (ip=quic, i1…) идёт перед рукопожатием. Через detour релей может принять её за QUIC-поток и перенаправить по SNI; от этого защищает Anti-sniff decoy. Direct only убирает пачку на таких путях."
+  },
+  "Core: lx.quic_sniff_decoy. A relay with UDP sniffing (Xray destOverride quic) rewrites the destination by the SNI of the first QUIC packet; a junk first byte makes it give up. Servers drop the byte. A DPI on your own uplink may react to it, hence Through detour by default. Also covers the AWG masquerade burst that imitates QUIC (ip=quic).": {
+    "value": "Ядро: lx.quic_sniff_decoy. Релей со сниффингом UDP (Xray destOverride quic) подменяет назначение по SNI из первого QUIC-пакета; мусорный первый байт заставляет его отступиться. Серверы этот байт отбрасывают. DPI вашего собственного канала может на него среагировать, поэтому по умолчанию — Through detour. Действует и на маскировочную пачку AWG под QUIC (ip=quic)."
   },
   "Core: lx.masque.idle_timeout. The idle window for MASQUE nodes that have no idle_timeout of their own.": {
     "value": "Ядро: lx.masque.idle_timeout. Окно простоя для узлов MASQUE без собственного idle_timeout."

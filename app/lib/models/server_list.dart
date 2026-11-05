@@ -180,6 +180,13 @@ final class SubscriptionServers extends ServerList {
   final UpdateStatus lastUpdateStatus;
   final int updateIntervalHours;
   final int lastNodeCount;
+
+  /// Бюджет узлов — число узлов выдачи после разбора и import-правил, ДО
+  /// обрезки по доле подписки ([lastNodeCount] — после). `0` — обрезки не
+  /// было или запись старше поля: тогда полный размер = [lastNodeCount]
+  /// ([nodeCountBeforeCut]). Рантайм машины, в бэкап не едет.
+  final int totalNodeCount;
+
   /// Подряд фейлов с последнего успеха. Персистится, чтобы после рестарта
   /// показать юзеру "(3 fails)". Сбрасывается в 0 на успех. **Не используется
   /// для фризинга** — для этого есть in-memory `_failCounts` в `AutoUpdater`
@@ -263,6 +270,7 @@ final class SubscriptionServers extends ServerList {
     this.lastUpdateStatus = UpdateStatus.never,
     this.updateIntervalHours = 24,
     this.lastNodeCount = 0,
+    this.totalNodeCount = 0,
     this.consecutiveFails = 0,
     this.disabledHashes = const {},
     this.nodeWarnings = const {},
@@ -300,6 +308,10 @@ final class SubscriptionServers extends ServerList {
   List<ImportRule> get activeImportRules =>
       importRulesEnabled ? importRules.where((r) => r.isUsable).toList() : const [];
 
+  /// Бюджет узлов — размер выдачи до обрезки (см. [totalNodeCount]).
+  int get nodeCountBeforeCut =>
+      totalNodeCount > lastNodeCount ? totalNodeCount : lastNodeCount;
+
   @override
   String get type => 'subscription';
 
@@ -316,6 +328,7 @@ final class SubscriptionServers extends ServerList {
     UpdateStatus? lastUpdateStatus,
     int? updateIntervalHours,
     int? lastNodeCount,
+    int? totalNodeCount,
     int? consecutiveFails,
     Map<String, DateTime>? disabledHashes,
     Map<String, List<StoredWarning>>? nodeWarnings,
@@ -344,6 +357,7 @@ final class SubscriptionServers extends ServerList {
         lastUpdateStatus: lastUpdateStatus ?? this.lastUpdateStatus,
         updateIntervalHours: updateIntervalHours ?? this.updateIntervalHours,
         lastNodeCount: lastNodeCount ?? this.lastNodeCount,
+        totalNodeCount: totalNodeCount ?? this.totalNodeCount,
         consecutiveFails: consecutiveFails ?? this.consecutiveFails,
         disabledHashes: disabledHashes ?? this.disabledHashes,
         nodeWarnings: nodeWarnings ?? this.nodeWarnings,
@@ -378,6 +392,7 @@ final class SubscriptionServers extends ServerList {
           lastUpdateStatus == other.lastUpdateStatus &&
           updateIntervalHours == other.updateIntervalHours &&
           lastNodeCount == other.lastNodeCount &&
+          totalNodeCount == other.totalNodeCount &&
           consecutiveFails == other.consecutiveFails &&
           _eq.equals(_disabledSeconds(disabledHashes),
               _disabledSeconds(other.disabledHashes)) &&
@@ -404,6 +419,7 @@ final class SubscriptionServers extends ServerList {
         lastUpdateStatus,
         updateIntervalHours,
         lastNodeCount,
+        totalNodeCount,
         consecutiveFails,
         _eq.hash(_disabledSeconds(disabledHashes)),
         _eq.hash(nodeWarnings),
@@ -449,6 +465,10 @@ final class UserServer extends ServerList {
   final bool allowLan;
   final bool allowGateway;
 
+  /// Поле записи `own_routes`: в узел идут только его собственные сети
+  /// (пресет `tunnel-routes`, `preferred_by`). Хранится только `true`.
+  final bool ownRoutes;
+
   /// §707 итер. 9 (контракт 1.1.159) — поля записи
   /// `disable_taildrop_commands` (НЕ принимать буфер и ссылки от своих
   /// устройств) и `disable_taildrop_autosave` (НЕ класть принятое в Downloads
@@ -477,6 +497,7 @@ final class UserServer extends ServerList {
     this.allowLocal = false,
     this.allowLan = false,
     this.allowGateway = false,
+    this.ownRoutes = false,
     this.disableTaildropCommands = false,
     this.disableTaildropAutosave = false,
     this.stateDirId = '',
@@ -500,6 +521,7 @@ final class UserServer extends ServerList {
     bool? allowLocal,
     bool? allowLan,
     bool? allowGateway,
+    bool? ownRoutes,
     bool? disableTaildropCommands,
     bool? disableTaildropAutosave,
     String? stateDirId,
@@ -518,6 +540,7 @@ final class UserServer extends ServerList {
         allowLocal: allowLocal ?? this.allowLocal,
         allowLan: allowLan ?? this.allowLan,
         allowGateway: allowGateway ?? this.allowGateway,
+        ownRoutes: ownRoutes ?? this.ownRoutes,
         disableTaildropCommands:
             disableTaildropCommands ?? this.disableTaildropCommands,
         disableTaildropAutosave:
@@ -543,6 +566,7 @@ final class UserServer extends ServerList {
           allowLocal == other.allowLocal &&
           allowLan == other.allowLan &&
           allowGateway == other.allowGateway &&
+          ownRoutes == other.ownRoutes &&
           disableTaildropCommands == other.disableTaildropCommands &&
           disableTaildropAutosave == other.disableTaildropAutosave &&
           stateDirId == other.stateDirId);
@@ -550,8 +574,8 @@ final class UserServer extends ServerList {
   @override
   int get hashCode => Object.hash(id, enabled, tagPrefix, detourPolicy, tls,
       rawBody, _eq.hash(warnings), skipTailscalePresets, allowLocal, allowLan,
-      allowGateway, disableTaildropCommands, disableTaildropAutosave,
-      stateDirId);
+      allowGateway, ownRoutes, disableTaildropCommands,
+      disableTaildropAutosave, stateDirId);
 }
 
 /// §234 — член папки: самодостаточный парсируемый фрагмент (URI-строка,
@@ -578,11 +602,16 @@ final class FolderMember {
   final NodeLink detour;
 
   /// §578/§656 — поля записи, как у `UserServer`:
-  /// `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway`.
+  /// `skip_tailscale_presets`, `allow_local`, `allow_lan`, `allow_gateway`,
+  /// `own_routes`.
   final bool skipTailscalePresets;
   final bool allowLocal;
   final bool allowLan;
   final bool allowGateway;
+
+  /// Поле записи `own_routes`: в узел идут только его собственные сети
+  /// (пресет `tunnel-routes`, `preferred_by`). Хранится только `true`.
+  final bool ownRoutes;
 
   /// §707 итер. 9 — `disable_taildrop_commands` /
   /// `disable_taildrop_autosave`, как у
@@ -611,6 +640,7 @@ final class FolderMember {
     this.allowLocal = false,
     this.allowLan = false,
     this.allowGateway = false,
+    this.ownRoutes = false,
     this.disableTaildropCommands = false,
     this.disableTaildropAutosave = false,
     this.stateDirId = '',
@@ -649,6 +679,7 @@ final class FolderMember {
     bool? allowLocal,
     bool? allowLan,
     bool? allowGateway,
+    bool? ownRoutes,
     bool? disableTaildropCommands,
     bool? disableTaildropAutosave,
     String? stateDirId,
@@ -664,6 +695,7 @@ final class FolderMember {
         allowLocal: allowLocal ?? this.allowLocal,
         allowLan: allowLan ?? this.allowLan,
         allowGateway: allowGateway ?? this.allowGateway,
+        ownRoutes: ownRoutes ?? this.ownRoutes,
         disableTaildropCommands:
             disableTaildropCommands ?? this.disableTaildropCommands,
         disableTaildropAutosave:
@@ -689,6 +721,7 @@ final class FolderMember {
           allowLocal == other.allowLocal &&
           allowLan == other.allowLan &&
           allowGateway == other.allowGateway &&
+          ownRoutes == other.ownRoutes &&
           disableTaildropCommands == other.disableTaildropCommands &&
           disableTaildropAutosave == other.disableTaildropAutosave &&
           stateDirId == other.stateDirId &&
@@ -710,6 +743,7 @@ final class FolderMember {
       allowLocal,
       allowLan,
       allowGateway,
+      ownRoutes,
       disableTaildropCommands,
       disableTaildropAutosave,
       stateDirId,
@@ -982,6 +1016,7 @@ enum NodeRecordFlag {
   allowLocal,
   allowLan,
   allowGateway,
+  ownRoutes,
 
   /// §707 итер. 9 — Taildrop, знак «выключено» (`true` = функция снята):
   /// в конфиг не идут (правка не поднимает `configDirty`), итоговые теги
@@ -998,6 +1033,7 @@ enum NodeRecordFlag {
         allowLocal => u.allowLocal,
         allowLan => u.allowLan,
         allowGateway => u.allowGateway,
+        ownRoutes => u.ownRoutes,
         disableTaildropCommands => u.disableTaildropCommands,
         disableTaildropAutosave => u.disableTaildropAutosave,
       };
@@ -1007,6 +1043,7 @@ enum NodeRecordFlag {
         allowLocal => m.allowLocal,
         allowLan => m.allowLan,
         allowGateway => m.allowGateway,
+        ownRoutes => m.ownRoutes,
         disableTaildropCommands => m.disableTaildropCommands,
         disableTaildropAutosave => m.disableTaildropAutosave,
       };
@@ -1016,6 +1053,7 @@ enum NodeRecordFlag {
         allowLocal => u.copyWith(allowLocal: v),
         allowLan => u.copyWith(allowLan: v),
         allowGateway => u.copyWith(allowGateway: v),
+        ownRoutes => u.copyWith(ownRoutes: v),
         disableTaildropCommands => u.copyWith(disableTaildropCommands: v),
         disableTaildropAutosave => u.copyWith(disableTaildropAutosave: v),
       };
@@ -1025,6 +1063,7 @@ enum NodeRecordFlag {
         allowLocal => m.copyWith(allowLocal: v),
         allowLan => m.copyWith(allowLan: v),
         allowGateway => m.copyWith(allowGateway: v),
+        ownRoutes => m.copyWith(ownRoutes: v),
         disableTaildropCommands => m.copyWith(disableTaildropCommands: v),
         disableTaildropAutosave => m.copyWith(disableTaildropAutosave: v),
       };
