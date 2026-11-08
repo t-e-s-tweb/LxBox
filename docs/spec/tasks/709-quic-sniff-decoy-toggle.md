@@ -154,9 +154,9 @@
     байт только там, где узел открывает QUIC, по умолчанию на повторе.
   - `quic_sniff_decoy_send` — enum `retry` (дефолт) / `always`, «Decoy
     sending»; на WireGuard не действует.
-  - `quic_sniff_decoy_outbounds` — `text_list`, `options_open`, дефолт
+  - `quic_sniff_decoy_outbounds` — `text_list` с закрытыми `options`, дефолт
     `masque`, options — восемь типов ядра, «Decoy node types».
-  - `quic_sniff_decoy_detours` — `text_list`, `options_open`, дефолт `vless`,
+  - `quic_sniff_decoy_detours` — `text_list` с закрытыми `options`, дефолт `vless`,
     options — типы outbound сборки без групп (vless, vmess, trojan,
     shadowsocks, socks, http, ssh, hysteria2, tuic, masque, trusttunnel,
     wireguard, anytls, naive, shadowtls), «Decoy relay types».
@@ -198,6 +198,35 @@ v0-хранилища переменную не задают, строка шл�
 дефолтами для трёх режимов, `off` / `true` / `false` без ключа, `send` и
 списки в объекте, пустые списки без полей, `#enable` трёх новых;
 `template_check` / `ui_check --strict` — 0/0 локально. Тесты — только CI.
-Не проверено: эмулятор и устройство (вид секции, старт ядра lx.33 с
-объектом, живой ретрай).
+Эмулятор (08.11.2026, LxBox_test, Android 14, сборка 2.25.20-dev.16, ядро
+`1.14.4-lx.33` по `/device`): дефолт — в `config.lx` ключа нет; после
+`PUT /settings/vars/quic_sniff_decoy=detour` и `quic_sniff_decoy_send=always`
+`/config/pretty` даёт `{"mode":"detour","send":"always","detour_type":["vless"],
+"outbound_type":["masque"]}`, ядро стартует с этим конфигом без ошибок
+(`/config/running` показывает объект, лог ядра — `status=Started`);
+сохранённое старое `awg_masquerade: direct` в `lx` не попадает. Секция QUIC на
+вкладке Core: режим, Decoy sending, Decoy node types, Decoy relay types; при
+Off три зависимые настройки гаснут. Попутно: `start-vpn-headless` после
+`PUT /settings/vars/*` стартовал со старым файлом конфига — ключ появился
+только после `POST /action/rebuild-config` (известное ограничение §667: dirty
+через Debug API воронку автоперезапуска не заводит), к lx.33 не относится.
+Не проверено: живой ретрай с байтом (нужен сниффящий релей); телефон.
+Сборка: SDK 37 существует только как `platforms;android-37.0`, AGP 9.1 без
+`compileSdkMinor = 0` ищет `android-37` и падает — поправлено в 721
+(`680e4497`).
 
+### Правка: списки типов без свободного ввода (5137bf5f)
+
+Первый вариант объявлял оба списка с `options_open`, и поле принимало
+любой текст (владелец на эмуляторе: «нельзя же любое вводить»). Ядро
+получает исчерпывающий список типов, неизвестный тип — отказ на старте.
+Решение владельца: выбранные значения тегами с ×, добавление из выпадашки
+с остальными. `options_open` снят; закрытый `text_list` + `options` в форме
+Core рисует новый `VarChipPicker` (`template_var_list.dart`): `InputChip`
+на выбранное, «Add ▾» (`PopupMenuButton`) с ещё не выбранными, подпись
+«Core default» при пустом списке; значение — строки в порядке добавления,
+строки вне `options` (старое сохранённое) выпадают при первой правке.
+`VarMultiSelect` (чипы-переключатели §555) остаётся у параметров пресетов.
+Тесты: `template_var_options_test.dart` — теги/добавление/×/пустое.
+Проверка: APK из CI build-fast (run 42475101793) на эмуляторе, владелец
+потыкал: «верно всё».
