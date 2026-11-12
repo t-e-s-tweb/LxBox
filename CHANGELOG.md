@@ -8,12 +8,23 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **XHTTP session id alphabet and length were lost on import from Xray ([task 726](docs/spec/tasks/726-xhttp-session-id-table-length.md), [#211](https://github.com/Leadaxe/LxBox/issues/211)).** A server behind a CDN that blocks the default dashed-UUID session id answered 403 when the node came from an Xray config or a share link: `sessionIDTable` and `sessionIDLength` were dropped, while the same node written as sing-box JSON worked. Both now reach the node as `session_table` / `session_length` — from Xray JSON (`xhttpSettings` / `splithttpSettings`, flat or in `extra`) and from the `extra` and query of a link. One without the other is removed with a warning, because the core accepts them only together. Shared contract 1.1.168.
+  (RU: алфавит и длина идентификатора сессии XHTTP терялись при импорте из Xray — `sessionIDTable` / `sessionIDLength` теперь доезжают до узла из Xray JSON и из ссылок; одно поле без второго снимается с предупреждением.)
+- **A node imported from Xray JSON with `mux` enabled did not connect ([task 727](docs/spec/tasks/727-xray-mux-not-multiplex.md)).** Xray `mux` was turned into sing-box `multiplex`, but these are different protocols on the wire: Xray speaks Mux.Cool, the core speaks h2mux / smux / yamux, and an Xray server refuses the latter. Xray `mux` is now dropped with an info note on the node; the node connects without multiplexing. `multiplex` written explicitly in sing-box JSON is kept. Nodes from a subscription are fixed on the next subscription update. Shared contract 1.1.169.
+  (RU: узел из Xray JSON с включённым `mux` не соединялся — Xray mux (Mux.Cool) несовместим с multiplex ядра; теперь он снимается с пометкой на узле, явный `multiplex` в sing-box JSON остаётся.)
+
+## [2.25.21] — 2026-11-12
+
 ### Added
 
+- **Path MTU on the direct node ([task 725](docs/spec/tasks/725-path-mtu-direct-diagnostics.md)).** View details of `direct-out` → Diagnostics has a Path MTU island: it shows the interface and its MTU, sends ping packets that may not be fragmented straight over the phone's network (past the tunnel, VPN on or off, without the core) and finds the largest whole packet that gets an answer from the target (`8.8.8.8` by default; ▾ lists well-known addresses, or type your own; a port in the target is dropped). Under the result — the MTU to set on WireGuard / AWG (`− 60`, `− 80` for an IPv6 target) and MASQUE (`− 51`) nodes, the list of probes and a copy button. Debug API: `POST /action/pathmtu[?target=]`.
 - **Android assistants can turn the VPN on or off and read its status ([task 721](docs/spec/tasks/721-appfunctions-vpn-toggle-status.md)).** On Android 16+ the app declares the AppFunctions `startVpn`, `stopVpn` and `getVpnStatus` (`androidx.appfunctions` 1.0.0-rc01). They work only after App Settings → Automation → **AI assistant control** is turned on (off by default, hidden below Android 16). Connecting needs a VPN permission granted earlier; the answer is only the tunnel state. The app module now builds with `compileSdk 37` and KSP. The API is experimental: Gemini calls only apps from Google's early access programme for now.
 
 ### Changed
 
+- **The node's Diagnostics tab is laid out in islands, and Endpoint takes your own address ([task 725](docs/spec/tasks/725-path-mtu-direct-diagnostics.md)).** Check and Notifications are separate cards. The Endpoint field is a combo box: ▾ fills in a ready check, or type any `http://` / `https://` URL.
 - **The home screen opens on the Direction you picked last ([task 724](docs/spec/tasks/724-home-direction-remembered.md), [#212](https://github.com/Leadaxe/LxBox/issues/212)).** The choice in the Direction list is now saved and survives an app restart and a VPN restart. If that Direction no longer exists, the first one in the list is shown. Default traffic no longer decides which Direction the home screen opens on.
 - **Core `v1.14.4-lx.33`; Anti-sniff decoy is off by default and has three more settings ([task 709](docs/spec/tasks/709-quic-sniff-decoy-toggle.md)).** The core reads `lx.quic_sniff_decoy` as an object and by default sends the byte only on a retry after a failed first attempt, only from MASQUE nodes and only through VLESS relays. VPN Settings → Core → QUIC: "Anti-sniff decoy" defaults to Off (a chosen mode is kept), plus "Decoy sending" (On retry / Always), "Decoy node types" and "Decoy relay types". The two type lists are picked from the core's own list: chosen types show as tags with ×, "Add ▾" offers the rest; no free text.
 - **The "AWG masquerade" setting is removed ([task 720](docs/spec/tasks/720-awg-masquerade-setting.md)).** The core dropped `lx.awg_masquerade` and sends the AmneziaWG masquerade burst on every path.
