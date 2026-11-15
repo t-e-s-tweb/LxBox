@@ -15,6 +15,8 @@
 
 ### Fixed
 
+- **Test servers: the detour note and the «VPN is running» dialog ([task 738](docs/spec/tasks/738-probe-note-wording-vpn-gate-autoclose.md)).** The note under the test no longer says «of this source»: a folder node with its own detour got a line about the source. It now reads «Detour is not applied in the test», in the singular for one node. The «VPN is running» dialog closes by itself when the VPN is stopped from outside it — the notification, the tile, Automation — and the test goes on.
+  (RU: пометка под тестом серверов больше не говорит «этого источника» — detour бывает личным у узла папки; диалог «VPN is running» закрывается сам, если VPN остановили мимо него, и тест продолжается.)
 - **A file subscription without its file no longer stays silent ([#219](https://github.com/Leadaxe/LxBox/issues/219)).** A backup keeps subscription settings, not their contents, so after a restore on another phone or a reinstall a subscription added from a file has no servers, and "Update" did nothing. The list row now says "Choose the file again", the Nodes tab explains why (Android does not let the app read the file again) with a button to pick the file, and "Update" shows the same hint.
   (RU: файловая подписка без файла на устройстве — после восстановления из копии, на другом телефоне — больше не молчит: в списке «Выберите файл заново», на вкладке Nodes объяснение и кнопка выбора файла, Update показывает ту же подсказку. Копия по-прежнему хранит настройки подписок, а не их содержимое.)
 - **Test servers ignored the source's detour ([task 730](docs/spec/tasks/730-probe-test-source-detour.md), [#187](https://github.com/Leadaxe/LxBox/issues/187)).** With the VPN off, the speedometer test checked every node directly, so a subscription behind an operator's HTTP proxy showed all nodes dead on a network without direct internet. A detour that points at one specific node is now followed in the test, as in the tunnel (append or replace); in a folder, members' own detours count with the same priority as in the tunnel. A detour the test cannot follow — a Direction, its auto node, a chain, a group, a node that is off or goes through its own detour — is named under the test bar, which says either «Tested through <node>.» or that nodes are checked directly. Node Diagnostics with the VPN off and the Debug API folder probe follow the same rule.
@@ -29,6 +31,11 @@
   (RU: подключение клиентов к ядру и pause/wake ядра шли с главного потока Android; при недоступном ядре интерфейс, уведомление и Stop переставали отвечать. Теперь это фоновые потоки, пауза повтора растёт до 8 с, зависший вызов назван в журнале. Тест серверов больше не стартует, пока VPN запускается.)
 - **Android TV: the app list could not be scrolled with the remote ([task 736](docs/spec/tasks/736-tv-search-field-dpad-mouse-drag.md), [#220](https://github.com/Leadaxe/LxBox/issues/220)).** In the app picker (Routing → Tunnel apps, apps of a routing rule, URL Check) the D-pad stopped at the search field: «Down» moved the cursor inside it and never reached the list. Up/Down now leave single-line search fields above lists (app pickers, Logs filter, connection filter, node filters). Lists also scroll by dragging with a mouse pointer, which is how a TV remote in mouse mode works.
   (RU: на Android TV в выборе приложений пульт упирался в строку поиска, а в режиме «мышь» список не тянулся; теперь ↑/↓ уводят из поля поиска в список, а списки прокручиваются перетаскиванием «мышью».)
+
+### Changed
+
+- **TLS settings say they skip servers with a detour ([task 737](docs/spec/tasks/737-tls-skip-detour-toggle.md)).** TLS fragmentation and mixed-case SNI are applied only to servers that connect directly; a server with a detour runs its TLS inside the hop, where the core's sniff guard decides. The global section, the subscription and folder TLS section and the server screen now say so.
+  (RU: подписи у TLS-настроек — глобально, у подписки/папки и у узла — говорят, что к серверам с detour они не применяются; поведение не менялось)
 
 ## [2.25.22] — 2026-11-14
 
