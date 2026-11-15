@@ -10,6 +10,23 @@
 
 ### Fixed
 
+- **Test servers ignored the source's detour ([task 730](docs/spec/tasks/730-probe-test-source-detour.md), [#187](https://github.com/Leadaxe/LxBox/issues/187)).** With the VPN off, the speedometer test checked every node directly, so a subscription behind an operator's HTTP proxy showed all nodes dead on a network without direct internet. A detour that points at one specific node is now followed in the test, as in the tunnel (append or replace); in a folder, members' own detours count with the same priority as in the tunnel. A detour the test cannot follow — a Direction, its auto node, a chain, a group, a node that is off or goes through its own detour — is named under the test bar, which says either «Tested through <node>.» or that nodes are checked directly. Node Diagnostics with the VPN off and the Debug API folder probe follow the same rule.
+  (RU: «Тест серверов» без VPN проверял узлы напрямую, мимо detour источника; теперь detour на конкретный узел учитывается так же, как в туннеле, включая личные detour членов папки, а под полосой теста написано, учтён ли он.)
+
+## [2.25.22] — 2026-11-14
+
+### Changed
+
+- **Sniff guard replaces the QUIC anti-sniff decoy ([task 729](docs/spec/tasks/729-sniff-guard-block.md), [#215](https://github.com/Leadaxe/LxBox/issues/215)).** Core settings get a **Sniff guard** section with the TLS method (Record fragment by default), the QUIC method (Decoy byte by default) and two switches: «Only nodes with a masked SNI» (on by default) and «Remember relays across restarts» (off by default). The core hides the first handshake packet from a relay or router that redirects connections by SNI, and learns from connection outcomes which paths need it: paths through direct, SSH and SOCKS start unprotected, other relays start protected. The decoy byte is never sent through a SOCKS relay. The four «Anti-sniff decoy» settings are gone and their saved values are not carried over; the decoy, off by default before, is now on. Node checks use the same protection as the tunnel. The block is written for core 1.14.4-lx.34 and newer.
+  (RU: в настройках Core появилась секция «Защита от сниффинга»: метод для TLS, метод для QUIC, «Только узлы с маскировочным SNI» (включено) и «Помнить релеи между перезапусками» (выключено); ядро само учится, каким путям защита нужна. Четыре настройки «Обманки от сниффинга» убраны, их значения не переносятся; обманка, раньше выключенная по умолчанию, теперь включена.)
+
+### Added
+
+- **An HTTP proxy node says it carries only TCP ([task 728](docs/spec/tasks/728-http-proxy-tcp-only-notice.md), [#187](https://github.com/Leadaxe/LxBox/issues/187)).** Node Settings of an HTTP proxy shows a note under Server: the proxy carries only TCP connections, nodes with a TCP transport work through it fully, UDP-based nodes (Hysteria2, TUIC, WireGuard) do not. It is there for anyone who makes such a proxy the detour of a subscription.
+  (RU: на экране настроек HTTP-прокси под строкой Server стоит заметка — прокси передаёт только TCP-соединения; узлы с TCP-транспортом работают через него полностью, узлы на UDP — нет.)
+
+### Fixed
+
 - **XHTTP session id alphabet and length were lost on import from Xray ([task 726](docs/spec/tasks/726-xhttp-session-id-table-length.md), [#211](https://github.com/Leadaxe/LxBox/issues/211)).** A server behind a CDN that blocks the default dashed-UUID session id answered 403 when the node came from an Xray config or a share link: `sessionIDTable` and `sessionIDLength` were dropped, while the same node written as sing-box JSON worked. Both now reach the node as `session_table` / `session_length` — from Xray JSON (`xhttpSettings` / `splithttpSettings`, flat or in `extra`) and from the `extra` and query of a link. One without the other is removed with a warning, because the core accepts them only together. Shared contract 1.1.168.
   (RU: алфавит и длина идентификатора сессии XHTTP терялись при импорте из Xray — `sessionIDTable` / `sessionIDLength` теперь доезжают до узла из Xray JSON и из ссылок; одно поле без второго снимается с предупреждением.)
 - **A node imported from Xray JSON with `mux` enabled did not connect ([task 727](docs/spec/tasks/727-xray-mux-not-multiplex.md)).** Xray `mux` was turned into sing-box `multiplex`, but these are different protocols on the wire: Xray speaks Mux.Cool, the core speaks h2mux / smux / yamux, and an Xray server refuses the latter. Xray `mux` is now dropped with an info note on the node; the node connects without multiplexing. `multiplex` written explicitly in sing-box JSON is kept. Nodes from a subscription are fixed on the next subscription update. Shared contract 1.1.169.
