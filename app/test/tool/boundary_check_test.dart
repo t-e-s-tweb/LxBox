@@ -66,38 +66,68 @@ void main() {
     });
   });
 
-  group('service client in VpnPlugin (745)', () {
-    test('CoreSession.client is allowed only on an openconnect line', () {
+  group('service side in a window-side file (747)', () {
+    test('service-side objects are violations', () {
+      expect(uiServiceSideUse('val cc = CoreSession.client'), isNotNull);
+      expect(uiServiceSideUse('if (CoreSession.isUp) {'), isNotNull);
+      expect(uiServiceSideUse('BootReceiver.hasTun(context)'), isNotNull);
+      expect(uiServiceSideUse('NativeCache.isVpnDesired(ctx)'), isNotNull);
+      expect(uiServiceSideUse('AutomationCache.prefs(context)'), isNotNull);
+      expect(uiServiceSideUse('ConfigManager.load()'), isNotNull);
+      expect(uiServiceSideUse('BoxService.coreLogsVerbose = true'), isNotNull);
+      expect(uiServiceSideUse('BgMethods.handle(ctx, m, a)'), isNotNull);
       expect(
-        vpnPluginServiceClientUse(
-          'private fun openConnectControl(): OpenConnectControl? = '
-          'CoreSession.client',
+        uiServiceSideUse('fun helper(cc: ServiceCommandClient) {}'),
+        isNotNull,
+      );
+      expect(
+        uiServiceSideUse('Taildrop.send(ctx, tag, id, n, items)'),
+        isNotNull,
+      );
+      expect(uiServiceSideUse('TaildropClip.state(context)'), isNotNull);
+      expect(uiServiceSideUse('TaildropServiceFiles.stats()'), isNotNull);
+    });
+
+    test('window-side names that only look similar are not', () {
+      expect(uiServiceSideUse('val cc = MyCoreSession.client'), isNull);
+      expect(uiServiceSideUse('ConfigFile.write(context, config)'), isNull);
+      expect(
+        uiServiceSideUse('BgClient.forward(ctx, "taildropSave", a, r)'),
+        isNull,
+      );
+      // Типы libbox, которыми пользуется клиент ядра окна.
+      expect(
+        uiServiceSideUse('import io.nekohasekai.libbox.TaildropInbox'),
+        isNull,
+      );
+      expect(
+        uiServiceSideUse(
+          'val sub = AtomicReference<TaildropInboxSubscription?>(null)',
         ),
         isNull,
       );
-      expect(
-        vpnPluginServiceClientUse('val cc = CoreSession.client'),
-        isNotNull,
-      );
-      expect(
-        vpnPluginServiceClientUse('CoreSession.client?.taildropDelete(t, n)'),
-        isNotNull,
-      );
+      expect(uiServiceSideUse('"ccTaildropSave" -> {'), isNull);
     });
 
-    test('UiCoreSession and CoreSession.isUp are not the service client', () {
+    test('BoxVpnService gives constants only', () {
       expect(
-        vpnPluginServiceClientUse('val cc = UiCoreSession.client'),
+        uiServiceSideUse('IntentFilter(BoxVpnService.BROADCAST_STATUS)'),
         isNull,
       );
-      expect(vpnPluginServiceClientUse('UiCoreSession.ensure()'), isNull);
-      expect(vpnPluginServiceClientUse('if (CoreSession.isUp) {'), isNull);
-    });
-
-    test('the ServiceCommandClient type is not allowed at all', () {
       expect(
-        vpnPluginServiceClientUse(
-          'fun openConnectHelper(cc: ServiceCommandClient) {}',
+        uiServiceSideUse('intent.getStringExtra(BoxVpnService.EXTRA_STATUS)'),
+        isNull,
+      );
+      expect(uiServiceSideUse('BoxVpnService.start(context)'), isNotNull);
+      expect(uiServiceSideUse('BoxVpnService.stopAwait(context)'), isNotNull);
+      expect(uiServiceSideUse('if (BoxVpnService.live != null) {'), isNotNull);
+      expect(
+        uiServiceSideUse('Intent(context, BoxVpnService::class.java)'),
+        isNotNull,
+      );
+      expect(
+        uiServiceSideUse(
+          'f(BoxVpnService.EXTRA_STATUS); BoxVpnService.reload(context)',
         ),
         isNotNull,
       );
@@ -105,25 +135,89 @@ void main() {
 
     test('a comment does not hide or cause a violation', () {
       final code = stripComments([
-        'val cc = CoreSession.client // openconnect',
+        'val cc = CoreSession.client // BgClient',
         '// CoreSession.client',
       ]);
-      expect(vpnPluginServiceClientUse(code[0]), isNotNull);
-      expect(vpnPluginServiceClientUse(code[1]), isNull);
+      expect(uiServiceSideUse(code[0]), isNotNull);
+      expect(uiServiceSideUse(code[1]), isNull);
     });
   });
 
-  group('UiSinks members (745)', () {
-    test('every member on the line is listed', () {
-      expect(uiSinksMembers('if (UiSinks.coreLogSink == null) return'), [
-        'coreLogSink',
-      ]);
-      expect(uiSinksMembers('UiSinks.ccStatusSink = UiSinks.ccGroupsSink'), [
-        'ccStatusSink',
-        'ccGroupsSink',
-      ]);
-      expect(uiSinksMembers('object UiSinks {'), isEmpty);
-      expect(uiSinksMembers('MyUiSinks.x'), isEmpty);
+  group('manifest processes (747)', () {
+    test('every component needs :ui or :bg', () {
+      const xml = '''
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application android:name=".App">
+    <activity
+        android:name=".MainActivity"
+        android:process=":ui"
+        android:exported="true">
+      <intent-filter><action android:name="android.intent.action.MAIN"/></intent-filter>
+    </activity>
+    <service android:name=".Svc" android:process=":bg" />
+    <receiver android:name=".NoProcess" android:exported="false" />
+    <provider
+        android:name=".Wrong"
+        android:process=":other"
+        android:authorities="x" />
+    <activity-alias android:name=".Alias" android:targetActivity=".MainActivity" />
+  </application>
+</manifest>
+''';
+      final v = manifestProcessViolations(xml);
+      expect(v, hasLength(2));
+      expect(v[0], contains('.NoProcess'));
+      expect(v[0], contains('нет android:process'));
+      expect(v[1], contains('.Wrong'));
+      expect(v[1], contains(':other'));
+    });
+
+    test('a commented-out component and an alias are not counted', () {
+      const xml = '''
+<application>
+  <!-- <service android:name=".Old" /> -->
+  <activity-alias android:name=".A" android:targetActivity=".M" />
+  <service android:name=".S" android:process=":bg" />
+</application>
+''';
+      expect(manifestProcessViolations(xml), isEmpty);
+    });
+  });
+
+  group('no core in the window process (747)', () {
+    test('libbox imports, Libbox calls and ensureLibbox are violations', () {
+      expect(
+        uiCoreUse('import io.nekohasekai.libbox.CommandClient'),
+        isNotNull,
+      );
+      expect(uiCoreUse('import io.nekohasekai.libbox.*'), isNotNull);
+      expect(
+        uiCoreUse('result.success(io.nekohasekai.libbox.Libbox.version())'),
+        isNotNull,
+      );
+      expect(uiCoreUse('val v = Libbox.checkConfig(text)'), isNotNull);
+      expect(uiCoreUse('BoxApplication.ensureLibbox()'), isNotNull);
+    });
+
+    test('ordinary window code is not', () {
+      expect(uiCoreUse('toBg(call, result, long = true)'), isNull);
+      expect(uiCoreUse('"getCoreVersion", "checkConfig" -> forward()'), isNull);
+      expect(uiCoreUse('val myLibbox = 1'), isNull);
+      final code = stripComments(['// Libbox.setup is never called here']);
+      expect(uiCoreUse(code[0]), isNull);
+    });
+
+    test('the screen client and the probe are service-side names', () {
+      expect(uiServiceSideUse('ScreenCoreSession.ensure()'), isNotNull);
+      expect(uiServiceSideUse('val cc: BoxCommandClient? = null'), isNotNull);
+      expect(uiServiceSideUse('StreamSinks.ccStatusSink = sink'), isNotNull);
+      expect(uiServiceSideUse('ProbeSession.start(config)'), isNotNull);
+      expect(uiServiceSideUse('PProfClient.fetch(path, 5000)'), isNotNull);
+      expect(uiServiceSideUse('L10n.str(ctx, id)'), isNotNull);
+      expect(uiServiceSideUse('UiHold.sync(context)'), isNotNull);
+      expect(uiServiceSideUse('AssistantCore.overview(ctx, index)'), isNotNull);
+      expect(uiServiceSideUse('AssistantBridge.call(ctx, m, p, b)'), isNotNull);
+      expect(uiServiceSideUse('UiCalls.onAck(id)'), isNotNull);
     });
   });
 

@@ -117,6 +117,15 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
         /// владелец состояния туннеля), затем побочный эффект на стороне сервиса.
         internal fun setCurrentStatus(s: VpnStatus, revoked: Boolean = false) {
             TunnelState.setStatus(s, revoked)
+            // §747 — метка §276 переживает смену процесса `:bg`: пишется та, что
+            // получилась в состоянии (Starting / Started её снимают).
+            runCatching {
+                if (s != VpnStatus.Stopping) {
+                    NativeCache.setTunnelRevoked(BoxApplication.application, TunnelState.revoked)
+                }
+            }
+            // §747 — свёрнутое окно держится живым, пока туннель не Stopped.
+            runCatching { UiHold.sync(BoxApplication.application) }
             if (s == VpnStatus.Stopped) {
                 // §707 итер. 7 — ленты окна «Send clipboard» живут, пока
                 // работает VPN; «Поделиться» и «Send to device» скрываются.
@@ -163,8 +172,39 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
                 "applied=${applied.size} [${applied.joinToString(",")}] " +
                 "not_installed=${missing.size} [${missing.joinToString(",")}]"
 
+        /// §747 — команда старта отправлена, но до сервиса ещё не дошла
+        /// (`startForegroundService` → `onStartCommand` — не мгновенно, а при
+        /// свежем процессе `:bg` и заметно). В этом окне статус ещё `Stopped`
+        /// и приёмника ACTION_STOP нет: Stop, пришедший сюда, раньше уходил в
+        /// пустоту, и туннель поднимался вопреки ему.
+        @Volatile
+        private var startPending = false
+
+        /// Stop пришёл, пока старт был в пути: сервис отменит его сам.
+        @Volatile
+        private var startCancelled = false
+
+        /// `BoxService.onStartCommand`: старт дошёл. `true` — его успели отменить.
+        internal fun startArrived(): Boolean {
+            startPending = false
+            return startCancelled.also { startCancelled = false }
+        }
+
+        /// Stop при статусе `Stopped`: если старт в пути — отменить его.
+        private fun cancelPendingStart(): Boolean {
+            if (!startPending) return false
+            BgLifecycle.journal("stop while a start is on its way in pid ${android.os.Process.myPid()} — the start will be cancelled")
+            startCancelled = true
+            return true
+        }
+
         fun start(context: Context) {
             Log.d(TAG, "[vpn] companion.start() → startForegroundService, current status=${TunnelState.status.name}")
+            startPending = true
+            startCancelled = false
+            BgLifecycle.journal("start accepted in pid ${android.os.Process.myPid()} (status=${TunnelState.status.name})")
+            // §747 G — процесс не завершается, пока система создаёт сервис.
+            BgLifecycle.startRequested()
             val intent = Intent(context, BoxVpnService::class.java).apply { action = ACTION_START }
             ContextCompat.startForegroundService(context, intent)
         }
@@ -176,7 +216,8 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
             // Идущий прогон страховки о них иначе не узнаёт и финальным
             // стартом поднимает туннель обратно; особенно в фазе тихого
             // цикла, где сервиса нет и ACTION_STOP принять некому.
-            AutomationBridge.notifyStopRequested()
+            AutomationRelay.notifyStopRequested()
+            if (TunnelState.status == VpnStatus.Stopped) cancelPendingStart()
             context.sendBroadcast(
                 Intent(ACTION_STOP).setPackage(context.packageName)
             )
@@ -269,6 +310,7 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
         fun stopAwait(context: Context): Deferred<Unit> {
             Log.d(TAG, "[vpn] companion.stopAwait() current status=${TunnelState.status.name}")
             if (TunnelState.status == VpnStatus.Stopped) {
+                cancelPendingStart()
                 return CompletableDeferred(Unit)
             }
             // §361 — статус не Stopped, но принимать ACTION_STOP некому: сервис
@@ -282,9 +324,12 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
                 setCurrentStatus(VpnStatus.Stopped)
                 runCatching {
                     context.sendBroadcast(
-                        Intent(BROADCAST_STATUS)
-                            .setPackage(context.packageName)
-                            .putExtra(EXTRA_STATUS, VpnStatus.Stopped.name)
+                        BgEvents.putWire(
+                            Intent(BROADCAST_STATUS)
+                                .setPackage(context.packageName)
+                                .putExtra(EXTRA_STATUS, VpnStatus.Stopped.name),
+                            TunnelState.wire(),
+                        )
                     )
                 }
                 completeStopIfWaiting()
@@ -368,6 +413,8 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
     override fun onCreate() {
         super.onCreate()
         live = this
+        // §747 G — сервис создан: пометка «старт в пути» больше не нужна.
+        BgLifecycle.startSettled()
         service.onCreate()
     }
 
@@ -378,12 +425,20 @@ class BoxVpnService : VpnService(), PlatformInterfaceWrapper {
     override fun onBind(intent: Intent): IBinder? = super.onBind(intent) ?: android.os.Binder()
 
     override fun onDestroy() {
-        live = null
-        service.onDestroy()
+        // §747 — если система уже создала новый экземпляр, общее состояние
+        // (ссылка на живой сервис, статус туннеля, снимок allow_bypass)
+        // принадлежит ему: уничтожение прежнего его не затирает.
+        val current = live === this
+        if (current) live = null
+        service.onDestroy(current)
         // §069: runtime applied значение больше не действует — clear snapshot
         // чтобы Stats screen warning исчез при stop VPN.
-        TunnelState.setSessionAllowBypass(false)
+        if (current) TunnelState.setSessionAllowBypass(false)
         super.onDestroy()
+        // §747 G — туннель остановлен, сервис уничтожен: если причин жить нет,
+        // процесс `:bg` с задержкой завершится (память ядра возвращает только
+        // завершение процесса). Новый старт до проверки её отменяет сам.
+        BgLifecycle.check(applicationContext, BgLifecycle.DELAY_IDLE_MS)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

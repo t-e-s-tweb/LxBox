@@ -6,35 +6,32 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.leadaxe.lxbox.MainActivity
 import com.leadaxe.lxbox.R
-import com.leadaxe.lxbox.vpn.AutomationBridge
 import com.leadaxe.lxbox.vpn.L10n
-import io.flutter.plugin.common.MethodChannel
+import com.leadaxe.lxbox.vpn.UiCalls
+import com.leadaxe.lxbox.vpn.UiHold
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
 
 /// §750 — мост шлюза ассистента (`getApiHelp` / `callApi`) в Dart.
 ///
-/// Вызов уходит методом `assistantCall` `{method, path, body}` по тому же
-/// MethodChannel, что и у [AutomationBridge] (канал ставит плагин при attach
-/// движка и снимает при detach) — отдельной ссылки на канал не заводим.
 /// Dart отвечает `{status, body}`; политику (белый список, тумблер «Let
 /// assistants change settings») проверяет Dart, натив их не знает.
 ///
-/// Лежит в `appfunctions/` (сервисная сторона): Flutter-канал берёт только
-/// через [AutomationBridge], `VpnPlugin`/`UiSinks`/клиента UI не знает.
-/// После §747 этот шов станет межпроцессным (`:bg` → `:ui`).
+/// §747 — шов межпроцессный: AppFunctions исполняются в `:bg`, Dart живёт в
+/// процессе окна. Вызов `assistantCall` `{method, path, body}` идёт обратным
+/// вызовом [UiCalls]: запрос кадром канала событий, окно исполняет
+/// `invokeMethod` на канале плагина и возвращает итог по номеру. «Мост есть» —
+/// окно назвалось `:bg` (`UiPresence`) и подтвердило получение запроса. На
+/// время вызова процесс окна удерживается ([UiHold]): свёрнутое окно при
+/// остановленном туннеле иначе могло бы быть заморожено.
 ///
-/// Движка нет или Dart ответил `503 not_ready`: один раз пробуем открыть окно
+/// Моста нет (окно закрыто, движка нет, окно заморожено и не подтвердило
+/// получение) или Dart ответил `503 not_ready`: один раз пробуем открыть окно
 /// L×Box и ждём до [AssistantLogic.BRIDGE_WAIT_MS]; не дождались — уведомление
 /// «Open L×Box…» и [AssistantError.APP_NOT_OPEN].
 object AssistantBridge {
@@ -43,85 +40,58 @@ object AssistantBridge {
     private const val CHANNEL_ID = "lxbox_assistant"
     private const val NOTIFICATION_ID = 7501
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-
     suspend fun call(ctx: Context, method: String, path: String, body: String?): AssistantLogic.ApiResult {
         val appCtx = ctx.applicationContext
-        var launchedAt = -1L
-        while (true) {
-            val channel = AutomationBridge.bridgeChannel
-            if (channel != null) {
-                val reply = invoke(channel, method, path, body)
-                if (!AssistantLogic.isNotReady(reply)) return reply
-            }
-            val since = if (launchedAt < 0) 0L else SystemClock.elapsedRealtime() - launchedAt
-            when (AssistantLogic.bridgeStep(launched = launchedAt >= 0, sinceLaunchMs = since)) {
-                AssistantLogic.BridgeStep.LAUNCH -> {
-                    launchedAt = SystemClock.elapsedRealtime()
-                    openApp(appCtx)
+        UiHold.callStarted(appCtx)
+        try {
+            var launchedAt = -1L
+            while (true) {
+                val reply = invoke(method, path, body)
+                if (reply != null && !AssistantLogic.isNotReady(reply)) return reply
+                val since = if (launchedAt < 0) 0L else SystemClock.elapsedRealtime() - launchedAt
+                when (AssistantLogic.bridgeStep(launched = launchedAt >= 0, sinceLaunchMs = since)) {
+                    AssistantLogic.BridgeStep.LAUNCH -> {
+                        launchedAt = SystemClock.elapsedRealtime()
+                        openApp(appCtx)
+                    }
+                    AssistantLogic.BridgeStep.WAIT -> delay(AssistantLogic.BRIDGE_POLL_MS)
+                    AssistantLogic.BridgeStep.GIVE_UP -> {
+                        Log.d(TAG, "Dart side not ready after ${since}ms, giving up")
+                        notifyOpenApp(appCtx)
+                        throw AssistantError(AssistantError.APP_NOT_OPEN, AssistantLogic.MSG_APP_NOT_OPEN)
+                    }
                 }
-                AssistantLogic.BridgeStep.WAIT -> delay(AssistantLogic.BRIDGE_POLL_MS)
-                AssistantLogic.BridgeStep.GIVE_UP -> {
-                    Log.d(TAG, "Dart side not ready after ${since}ms, giving up")
-                    notifyOpenApp(appCtx)
-                    throw AssistantError(AssistantError.APP_NOT_OPEN, AssistantLogic.MSG_APP_NOT_OPEN)
-                }
             }
+        } finally {
+            UiHold.callFinished(appCtx)
         }
     }
 
-    /// Один вызов `assistantCall` на главном потоке; ответ — через колбэк
-    /// `MethodChannel.Result`. Нет ответа за [AssistantLogic.BRIDGE_CALL_TIMEOUT_MS]
-    /// (например, движок отцепился посреди вызова) — ошибка.
-    private suspend fun invoke(
-        channel: MethodChannel,
-        method: String,
-        path: String,
-        body: String?,
-    ): AssistantLogic.ApiResult {
-        val outcome: Result<AssistantLogic.ApiResult> =
-            withTimeoutOrNull(AssistantLogic.BRIDGE_CALL_TIMEOUT_MS) {
-                suspendCancellableCoroutine<Result<AssistantLogic.ApiResult>> { cont ->
-                    fun finish(r: Result<AssistantLogic.ApiResult>) {
-                        if (cont.isActive) cont.resume(r)
-                    }
-                    mainHandler.post {
-                        runCatching {
-                            channel.invokeMethod(
-                                METHOD,
-                                mapOf("method" to method, "path" to path, "body" to body),
-                                object : MethodChannel.Result {
-                                    override fun success(result: Any?) {
-                                        val parsed = AssistantLogic.parseBridgeReply(result)
-                                        finish(
-                                            if (parsed != null) Result.success(parsed)
-                                            else Result.failure(AssistantError(
-                                                AssistantError.CORE_ERROR, AssistantLogic.MSG_BRIDGE_BAD_REPLY,
-                                            )),
-                                        )
-                                    }
-
-                                    override fun error(code: String, message: String?, details: Any?) {
-                                        Log.w(TAG, "assistantCall error: $code")
-                                        finish(Result.failure(AssistantError(
-                                            AssistantError.CORE_ERROR, AssistantLogic.MSG_BRIDGE_BAD_REPLY,
-                                        )))
-                                    }
-
-                                    override fun notImplemented() {
-                                        // Dart-обработчика нет — считаем «не готов», ждём как старта.
-                                        finish(Result.success(AssistantLogic.ApiResult(503, "{\"error\":\"not_ready\"}")))
-                                    }
-                                },
-                            )
-                        }.onFailure {
-                            Log.w(TAG, "invokeMethod($METHOD) failed: ${it.javaClass.simpleName}")
-                            finish(Result.success(AssistantLogic.ApiResult(503, "{\"error\":\"not_ready\"}")))
-                        }
-                    }
+    /// Один вызов `assistantCall` в Dart окна. null — моста нет (окно не
+    /// подключено или не подтвердило получение запроса): ждём как старта.
+    /// Окно получило запрос, но Dart не ответил за
+    /// [AssistantLogic.BRIDGE_CALL_TIMEOUT_MS] — ошибка.
+    private suspend fun invoke(method: String, path: String, body: String?): AssistantLogic.ApiResult? {
+        val outcome = UiCalls.invoke(
+            METHOD,
+            mapOf("method" to method, "path" to path, "body" to body),
+            timeoutMs = AssistantLogic.BRIDGE_CALL_TIMEOUT_MS,
+        )
+        return when (outcome) {
+            UiCalls.Outcome.NotDelivered -> null
+            UiCalls.Outcome.TimedOut ->
+                throw AssistantError(AssistantError.CORE_ERROR, AssistantLogic.MSG_BRIDGE_TIMEOUT)
+            is UiCalls.Outcome.Answered -> when (val r = outcome.reply) {
+                is UiCalls.Reply.Ok -> AssistantLogic.parseBridgeReply(r.value)
+                    ?: throw AssistantError(AssistantError.CORE_ERROR, AssistantLogic.MSG_BRIDGE_BAD_REPLY)
+                is UiCalls.Reply.Error -> {
+                    Log.w(TAG, "assistantCall error: ${r.code}")
+                    throw AssistantError(AssistantError.CORE_ERROR, AssistantLogic.MSG_BRIDGE_BAD_REPLY)
                 }
-            } ?: Result.failure(AssistantError(AssistantError.CORE_ERROR, AssistantLogic.MSG_BRIDGE_TIMEOUT))
-        return outcome.getOrThrow()
+                // Dart-обработчика нет — считаем «не готов», ждём как старта.
+                UiCalls.Reply.NotImplemented -> null
+            }
+        }
     }
 
     /// Открыть окно L×Box. Android может запретить запуск из фона (иногда

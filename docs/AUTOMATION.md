@@ -138,9 +138,11 @@ All of them are broadcast intents. The prefix is `com.leadaxe.lxbox.`.
 > a dialog.
 
 > **Only `START_VPN`, `STOP_VPN` and `TOGGLE_VPN` work without the app loaded.**
-> Every other command, and every outgoing event, needs the app process with its
-> UI engine up (the app was opened at least once since boot and not killed).
-> Without it such a command is skipped silently, with no `VPN_ERROR`.
+> Every other command, and every outgoing event, needs the app window process
+> with its UI engine up: the app is open, or was sent to the background with
+> Home. Once the window is closed (the task swiped away, the app finished) its
+> process ends (§747), and such a command is skipped silently, with no
+> `VPN_ERROR`, until the app is opened again.
 
 ---
 
@@ -341,8 +343,10 @@ Backup.
 With the VPN off, `checkUrl` and `checkExit` return `outcome = vpn_off`, and
 `selectExit` fails with `AppFunctionNotSupportedException`.
 
-**Check with adb** (the device must have the `app_function` service:
-`adb shell cmd app_function help`):
+**Check with adb** (the system must ship the shell command —
+`adb shell cmd app_function help` prints the list; the Android 16 emulator
+image has it from API 36.1, the 36.0 image has the service but not the
+command):
 
 ```sh
 adb shell cmd app_function list-app-functions --package com.leadaxe.lxbox

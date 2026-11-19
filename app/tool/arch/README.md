@@ -1,4 +1,4 @@
-# tool/arch — сторож архитектурных границ (§742 C)
+# tool/arch — сторож архитектурных границ (§742 C, §747 F)
 
 Запускается из `app/`. CI гоняет в job `checks` (шаг «Architecture boundaries»)
 с `--strict`.
@@ -19,36 +19,65 @@ dart run tool/arch/boundary_check.dart [--strict]
 | `dart-channel-literal` | имена платформенных каналов — только в `vpn/platform_channels.dart` |
 | `dart-ui-bridge-frozen` | список UI-файлов, ходящих в `box_vpn_client`/`cc_channel`, заморожен |
 | `kt-vpnplugin-ref`, `kt-eventsink-type`, `kt-sharedprefs` | кто в Kotlin может знать `VpnPlugin`, `EventSink`, `getSharedPreferences(` |
-| `kt-ui-boxservice` | UI-файлы не ходят в `BoxService.` напрямую |
-| `kt-vpnplugin-coresession` | `VpnPlugin.kt` ходит в `CoreSession.client` только за openconnect и не знает типа `ServiceCommandClient` (§745) |
-| `kt-uicoresession-ref` | `UiCoreSession` упоминают только сам держатель, `VpnPlugin.kt` и `BoxApplication.kt` (§745) |
-| `kt-uisinks-member` | кто к каким полям `UiSinks` обращается: сервисная сторона — только `coreLogSink` (`BoxService.kt`) и `ccOpenConnectSink` (`ServiceCommandClient.kt`) (§745) |
+| `kt-ui-service-side` | файлы стороны окна (процесс `:ui`) не трогают объекты сервисной стороны (процесс `:bg`); из `BoxVpnService` — только константы (§747) |
+| `kt-automationbridge-ref` | `AutomationBridge` (канал Dart) упоминают только `AutomationBridge.kt` и `VpnPlugin.kt` (§747) |
+| `kt-ui-no-core` | файлы стороны окна не импортируют `io.nekohasekai.libbox`, не зовут `Libbox.` и `ensureLibbox` — ядро в `:ui` не грузится (§747, итерация 2) |
+| `manifest-process` | каждый компонент исходного манифеста (кроме `activity-alias`) несёт `android:process` — `:ui` или `:bg` (§747) |
 | `removed-fields` | удалённые поля состояния не возвращаются |
 
-## Два клиента ядра (§745 C)
+## Два процесса (§747 F)
 
-- **`kt-vpnplugin-coresession`.** Обращение к `CoreSession.client` в
-  `VpnPlugin.kt` допустимо только в строке, где есть слово `openConnect`
-  (регистр не важен). Признак живёт в самой строке, поэтому правило не зависит
-  от номеров строк и не требует списка. Сейчас такая строка одна — аксессор
-  `openConnectControl()`, он отдаёт узкий интерфейс `OpenConnectControl` (пять
-  вызовов openconnect); пять обработчиков `cc*OpenConnect*` ходят через него.
-  Тип `ServiceCommandClient` в `VpnPlugin.kt` запрещён целиком — чтобы
-  аксессор нельзя было расширить до всего сервисного клиента. Хвостовой
-  комментарий `// openconnect` правило не обходит: комментарии срезаются до
-  проверки.
-- **`kt-uicoresession-ref`.** Сервисной стороной считается всё, кроме трёх
-  файлов из списка правила. `BoxApplication.kt` в нём как точка сборки
-  (`initUiSide`): регистрирует слушателя «перед закрытием» и отдаёт клиенту UI
-  приёмник журнала.
-- **`kt-uisinks-member`.** Таблица «файл → поля» задана в чекере
-  (`_uiSinksUsers`). Новому файлу сервисной стороны доступ к `UiSinks` не
-  выдаётся.
-- **`kt-eventsink-type`.** Тип `EventSink` из клиентов ядра знает только
-  `CommandClientShared.kt` (эмиттеры, общие для двух клиентов);
-  `ServiceCommandClient.kt` и `BoxCommandClient.kt` его не называют.
-- **`kt-ui-boxservice`.** В список UI-файлов добавлены `BoxCommandClient.kt` и
-  `UiCoreSession.kt`.
+Приложение — два именованных процесса: `:ui` (окно, Flutter) и `:bg` (всё
+сервисное, включая ядро и оба его клиента). Память у них раздельная, поэтому
+«дотянуться до объекта другой стороны» в коде компилируется, но в рантайме
+даёт пустую копию. Сторож ловит это по именам.
+
+Файлы стороны окна (всё, что исполняется в `:ui`): `MainActivity.kt`,
+`LanTransferSender.kt`, `vpn/VpnPlugin.kt`, `vpn/UiLaunchRequests.kt`,
+`vpn/AutomationBridge.kt`, `vpn/BgClient.kt`, `vpn/UiKeepAliveService.kt`,
+`vpn/WifiNetworkObserver.kt`,
+`vpn/WifiInfoReader.kt`, `vpn/WifiStateCache.kt`, `vpn/PermissionUtils.kt`,
+`editor/`. Клиент ядра экрана, проба и нативные окна Taildrop и автоматизации
+в список не входят: они живут в `:bg`.
+
+- **`kt-ui-service-side`.** В файлах окна запрещены имена `CoreSession`,
+  `ScreenCoreSession`, `ServiceCommandClient`, `BoxCommandClient`,
+  `StreamSinks`, `ProbeSession`, `PProfClient`, `BootReceiver`, `NativeCache`,
+  `AutomationCache`, `ConfigManager`, `BoxService`, `BgMethods`,
+  `BgCcMethods`, `BgLifecycle`, `BgEventPipe`, `UiPresence`, `UiHold`,
+  `UiCalls`, `AssistantCore`, `AssistantBridge`, `AppFunctionsGate`,
+  `LxBoxAppFunctions` (§750 — ассистент целиком на сервисной стороне),
+  `AutomationRelay`, `L10n` и обращения через точку к `Taildrop`,
+  `TaildropClip`, `TaildropServiceFiles`. Из `BoxVpnService` разрешены только
+  константы (`BROADCAST_STATUS`, `EXTRA_*`): имя члена целиком из заглавных
+  букв, цифр и `_`; `BoxVpnService::class` и любой метод — нарушение. До
+  сервиса окно дотягивается вызовом `BgClient.call` / `forward` (имя метода —
+  строка) и файлом конфига (`ConfigFile`).
+- **`kt-ui-no-core`** (итерация 2). Окно ядро не грузит: в его файлах нет
+  `io.nekohasekai.libbox` (импорт или полное имя), нет обращений `Libbox.…` и
+  вызова `ensureLibbox`. Один такой вызов — и в `:ui` загрузится `libbox.so`
+  со второй средой Go. Общий для сторон `WifiInfoReader.kt` поэтому тоже в
+  списке: тип ядра `WIFIState` собирает `PlatformInterfaceWrapper`.
+- **`kt-automationbridge-ref`.** Сервисная сторона шлёт команду автоматизации
+  через `AutomationRelay` (кадр канала событий); `AutomationBridge` держит
+  канал Dart и живёт в окне.
+- **`kt-eventsink-type`.** Тип `EventSink` называют только `StreamSinks.kt`
+  (приёмники потоков данных окна в `:bg`), `BgEventPipe.kt` (приёмник,
+  пишущий кадр), `CommandClientShared.kt` (эмиттеры) и `VpnPlugin.kt`
+  (свой `statusSink`).
+- **`manifest-process`.** Правило не построчное: читается
+  `android/app/src/main/AndroidManifest.xml` целиком (комментарии XML
+  срезаются), у каждого `<activity>`, `<service>`, `<receiver>`, `<provider>`
+  должен стоять `android:process=":ui"` или `":bg"`. `<activity-alias>` не
+  проверяется — атрибута у него нет, он живёт в процессе цели. Сюда входят и
+  переобъявления компонентов библиотек (`tools:node="merge"`). Собранный
+  манифест — с компонентами, которые приносит новый плагин, — проверяет сборка
+  Android (`app/android/app/build.gradle.kts`, задача `process…Manifest`):
+  компонент без процесса останавливает сборку.
+
+Правила `kt-uicoresession-ref` и `kt-uisinks-member` (§745) сняты: держатель
+клиента экрана и приёмники потоков переехали в `:bg` и для окна запрещены
+общим правилом `kt-ui-service-side`.
 
 ## Исключения
 

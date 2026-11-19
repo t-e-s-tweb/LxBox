@@ -96,6 +96,10 @@ object ProbeSession : CommandServerHandler {
             return startResult("VPN is running — test uses the live tunnel instead")
         }
         stopInternal("restart")
+        // §747 — ядро в `:bg` грузится лениво: проба без туннеля — одна из
+        // потребностей в нём.
+        runCatching { BoxApplication.ensureLibbox() }
+            .onFailure { return startResult(it.message ?: "core runtime is not available") }
         var cs: CommandServer? = null
         var cl: CommandClient? = null
         return runCatching {

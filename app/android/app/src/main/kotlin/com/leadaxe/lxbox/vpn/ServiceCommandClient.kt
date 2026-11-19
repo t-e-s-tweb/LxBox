@@ -17,12 +17,11 @@ import io.nekohasekai.libbox.TailscaleStatusUpdate
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-/// §745 — то, что `VpnPlugin` вправе делать с сервисным клиентом: openconnect
+/// §745 — то, что сторона окна вправе делать с сервисным клиентом: openconnect
 /// целиком живёт у сервиса (слушатель SSO должен работать, пока пользователь в
-/// браузере, а UI в фоне), а UI читает снимок, отвечает на челлендж и
-/// поднимает слушатель на том же состоянии. Это перечисленный остаток общей
-/// памяти между сторонами (docs/ARCHITECTURE.md, «Process boundary»); при
-/// разделении на процессы эти пять вызовов станут командами сервису.
+/// браузере, а окно в фоне или закрыто), а окно читает снимок, отвечает на
+/// челлендж и поднимает слушатель на том же состоянии. §747 — эти пять вызовов
+/// приходят из процесса окна вызовом `BgControlProvider` (`BgMethods`).
 interface OpenConnectControl {
     fun openConnectSnapshot(): Map<String, Any>
     fun submitOpenConnectForm(tag: String, challengeId: String, values: List<Pair<String, String>>): String?
@@ -44,14 +43,14 @@ interface OpenConnectControl {
 ///
 /// Создаёт и закрывает `BoxService` (после `startCommandServer()` и Started /
 /// в `closeCommandServerAtomic`), держит `CoreSession.client`. Статус-стрима,
-/// экрана и профайлера здесь нет — это роль UI ([BoxCommandClient], держатель
-/// `UiCoreSession`).
+/// экрана и профайлера здесь нет — это клиент экрана ([BoxCommandClient],
+/// держатель `ScreenCoreSession`).
 ///
 /// **JNI-no-throw**: каждый колбэк ядра обёрнут в try/catch — исключение через
 /// JNI роняет процесс.
 ///
-/// Единственный приёмник Flutter, в который пишет сервисный клиент, —
-/// `UiSinks.ccOpenConnectSink` (остаток общей памяти, см. [OpenConnectControl]).
+/// §747 — снимок состояния openconnect уходит окну кадром канала событий
+/// (`StreamSinks.ccOpenConnectSink`); вызовы окна — см. [OpenConnectControl].
 class ServiceCommandClient(private val host: Host) : OpenConnectControl {
 
     /// §742 — то, что клиенту нужно от стороны, которая его создала.
@@ -66,7 +65,6 @@ class ServiceCommandClient(private val host: Host) : OpenConnectControl {
         private const val TAG = CC_LOG_TAG
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
 
     /// §209 — unary-клиент сервисной роли: свой, не общий с клиентом UI
     /// (`cancelPing` и `resyncForReopen` у UI рвут только клиент UI).
@@ -218,7 +216,10 @@ class ServiceCommandClient(private val host: Host) : OpenConnectControl {
     private val openConnectClient = AtomicReference<CommandClient?>(null)
     private val openConnectSub = AtomicReference<OpenConnectStatusSubscription?>(null)
     private val openConnectGen = AtomicInteger(0)
-    private val openConnectEmitter = SnapshotEmitter(mainHandler) { UiSinks.ccOpenConnectSink }
+    /// §747 — снимок уходит кадром канала событий: приёмник в `:bg` —
+    /// `BgEventPipe.Sink`, пока Dart слушает `lxbox/cc/openconnect`.
+    private val openConnectEmitter =
+        SnapshotEmitter(Handler(Looper.getMainLooper())) { StreamSinks.ccOpenConnectSink }
     /// Последний снапшот endpoint'ов: Dart забирает его при подключении
     /// (висящий челлендж при открытии приложения).
     @Volatile private var openConnectEndpoints: List<Map<String, Any>> = emptyList()

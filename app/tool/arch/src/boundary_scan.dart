@@ -1,32 +1,85 @@
 // §742 C — чистые функции разбора для tool/arch/boundary_check.dart
 // (вынесены, чтобы test/tool/boundary_check_test.dart мог их импортировать).
 
-// §745 C — `CoreSession.client` как отдельное имя: `UiCoreSession.client` не
-// совпадает (слева буква).
-final _coreSessionClientRe = RegExp(r'(?<![A-Za-z0-9_])CoreSession\.client\b');
-final _openConnectRe = RegExp('openconnect', caseSensitive: false);
-final _serviceClientRe = RegExp(r'\bServiceCommandClient\b');
-final _uiSinksMemberRe = RegExp(r'\bUiSinks\.(\w+)');
+// §747 F — имена сервисной стороны (процесс `:bg`), которых файл стороны окна
+// (процесс `:ui`) не касается. Слева от имени не буква: `UiCoreSession` не
+// совпадает с `CoreSession`. Объекты Taildrop — только обращение через точку:
+// типы libbox `TaildropInbox…` клиент ядра окна использует законно.
+final _serviceSideNameRe = RegExp(
+  r'(?<![A-Za-z0-9_])(CoreSession|ScreenCoreSession|ServiceCommandClient|'
+  r'BoxCommandClient|StreamSinks|ProbeSession|PProfClient|BootReceiver|'
+  r'NativeCache|AutomationCache|ConfigManager|BoxService|BgMethods|'
+  r'BgCcMethods|BgLifecycle|BgEventPipe|UiPresence|UiHold|UiCalls|AutomationRelay|L10n|'
+  r'AssistantCore|AssistantBridge|AppFunctionsGate|LxBoxAppFunctions)\b',
+);
+final _taildropObjectRe = RegExp(
+  r'(?<![A-Za-z0-9_])(Taildrop|TaildropClip|TaildropServiceFiles)\.',
+);
+final _boxVpnServiceMemberRe = RegExp(
+  r'(?<![A-Za-z0-9_])BoxVpnService(?:\.(\w+)|::class)',
+);
+final _constantNameRe = RegExp(r'^[A-Z][A-Z0-9_]*$');
 
-/// §745 C — нарушение в строке `VpnPlugin.kt` (уже без комментариев) или
-/// null. Плагин ходит в сервисный клиент только за openconnect: обращение к
-/// `CoreSession.client` допустимо лишь в строке, где есть слово `openConnect`
-/// (регистр не важен) — признак живёт в самой строке и не зависит от сдвига
-/// номеров. Тип `ServiceCommandClient` плагину не нужен вовсе: openconnect он
-/// видит через узкий интерфейс `OpenConnectControl`.
-String? vpnPluginServiceClientUse(String codeLine) {
-  if (_serviceClientRe.hasMatch(codeLine)) return 'тип ServiceCommandClient';
-  if (_coreSessionClientRe.hasMatch(codeLine) &&
-      !_openConnectRe.hasMatch(codeLine)) {
-    return 'CoreSession.client вне openconnect';
+/// §747 F — нарушение в строке файла стороны окна (уже без комментариев) или
+/// null. Сторона окна живёт в другом процессе: память сервисной стороны ей
+/// недоступна, а её классы в процессе окна были бы пустой копией. До сервиса
+/// она дотягивается только вызовом `BgClient` (имя метода — строка) и файлом
+/// конфига (`ConfigFile`). Из `BoxVpnService` разрешены одни константы
+/// (`BROADCAST_STATUS`, `EXTRA_*`): значение подставляется при компиляции.
+String? uiServiceSideUse(String codeLine) {
+  final name = _serviceSideNameRe.firstMatch(codeLine);
+  if (name != null) return 'сервисная сторона: ${name.group(1)}';
+  final taildrop = _taildropObjectRe.firstMatch(codeLine);
+  if (taildrop != null) return 'сервисная сторона: ${taildrop.group(1)}';
+  for (final m in _boxVpnServiceMemberRe.allMatches(codeLine)) {
+    final member = m.group(1);
+    if (member == null) return 'BoxVpnService::class';
+    if (!_constantNameRe.hasMatch(member)) return 'BoxVpnService.$member';
   }
   return null;
 }
 
-/// §745 C — поля `UiSinks.<имя>`, к которым обращается строка.
-List<String> uiSinksMembers(String codeLine) => [
-  for (final m in _uiSinksMemberRe.allMatches(codeLine)) m.group(1)!,
-];
+final _coreInWindowRe = RegExp(
+  r'\bio\.nekohasekai\.libbox\b|(?<![A-Za-z0-9_])Libbox\.|\bensureLibbox\b',
+);
+
+/// §747 (итерация 2) — нарушение в строке файла стороны окна (уже без
+/// комментариев) или null: окно ядро не грузит вовсе. Любой `import
+/// io.nekohasekai.libbox…`, обращение `Libbox.…` или вызов `ensureLibbox`
+/// в процессе окна означал бы загрузку `libbox.so` и второй среды Go ради
+/// того, что уже есть в `:bg`.
+String? uiCoreUse(String codeLine) {
+  final m = _coreInWindowRe.firstMatch(codeLine);
+  return m == null ? null : 'ядро в процессе окна: ${m.group(0)}';
+}
+
+final _xmlCommentRe = RegExp(r'<!--.*?-->', dotAll: true);
+final _componentTagRe = RegExp(
+  r'<(activity|service|receiver|provider)(\s[^<>]*)?>',
+);
+final _attrNameRe = RegExp(r'\bandroid:name\s*=\s*"([^"]*)"');
+final _attrProcessRe = RegExp(r'\bandroid:process\s*=\s*"([^"]*)"');
+
+/// §747 F — компоненты манифеста без явного процесса: у каждого
+/// `<activity>`, `<service>`, `<receiver>`, `<provider>` должен стоять
+/// `android:process` со значением `:ui` или `:bg`. `<activity-alias>` атрибута
+/// не имеет (живёт в процессе цели) и не проверяется. Возвращает по строке на
+/// нарушение; комментарии XML не считаются.
+List<String> manifestProcessViolations(String manifestXml) {
+  final xml = manifestXml.replaceAll(_xmlCommentRe, '');
+  final out = <String>[];
+  for (final m in _componentTagRe.allMatches(xml)) {
+    final attrs = m.group(2) ?? '';
+    final name = _attrNameRe.firstMatch(attrs)?.group(1) ?? '?';
+    final process = _attrProcessRe.firstMatch(attrs)?.group(1);
+    if (process == ':ui' || process == ':bg') continue;
+    out.add(
+      '<${m.group(1)} $name>: '
+      '${process == null ? 'нет android:process' : 'android:process="$process"'}',
+    );
+  }
+  return out;
+}
 
 /// Убирает комментарии из строк исходника (Dart / Kotlin): целиковые `//`,
 /// `///`, блоки `/* … */` (в том числе `/** … */` на несколько строк) и

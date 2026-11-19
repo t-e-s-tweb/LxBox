@@ -13,6 +13,7 @@ import androidx.appfunctions.AppFunctionNotSupportedException
 import androidx.appfunctions.AppFunctionPermissionRequiredException
 import androidx.appfunctions.AppFunctionService
 import androidx.appfunctions.AppFunctionServiceEntryPoint
+import com.leadaxe.lxbox.vpn.BgLifecycle
 import com.leadaxe.lxbox.vpn.BootReceiver
 import com.leadaxe.lxbox.vpn.BoxApplication
 import com.leadaxe.lxbox.vpn.BoxVpnService
@@ -47,7 +48,9 @@ abstract class LxBoxAppFunctions : AppFunctionService() {
      * Returns the tunnel state after the connection attempt settles.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = false)
-    suspend fun startVpn(): VpnState {
+    suspend fun startVpn(): VpnState = held { startVpnNow() }
+
+    private suspend fun startVpnNow(): VpnState {
         ensureEnabled()
         val ctx = applicationContext
         BoxApplication.initialize(ctx)
@@ -76,7 +79,9 @@ abstract class LxBoxAppFunctions : AppFunctionService() {
      * Returns the tunnel state after the disconnection settles.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = false)
-    suspend fun stopVpn(): VpnState {
+    suspend fun stopVpn(): VpnState = held { stopVpnNow() }
+
+    private suspend fun stopVpnNow(): VpnState {
         ensureEnabled()
         Log.d(TAG, "stopVpn: status=${TunnelState.status}")
         if (TunnelState.status == VpnStatus.Stopped) return current()
@@ -88,7 +93,9 @@ abstract class LxBoxAppFunctions : AppFunctionService() {
      * Returns the current state of the L×Box VPN tunnel.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = false)
-    suspend fun getVpnStatus(): VpnState {
+    suspend fun getVpnStatus(): VpnState = held { getVpnStatusNow() }
+
+    private suspend fun getVpnStatusNow(): VpnState {
         ensureEnabled()
         return current()
     }
@@ -230,7 +237,21 @@ abstract class LxBoxAppFunctions : AppFunctionService() {
     /// Исполнить операцию ассистента: холодный процесс → инициализация
     /// (ConfigManager читает файл через BoxApplication); `AssistantError` →
     /// наследник `AppFunctionException` по коду.
-    private suspend fun <T> assistant(block: suspend () -> T): T {
+    private suspend fun <T> assistant(block: suspend () -> T): T = held { assistantNow(block) }
+
+    /// §747 G — исполнение функции — причина процессу `:bg` жить: привязку
+    /// системы к сервису функций `BgLifecycle` не видит, а функция может
+    /// ждать (окно, проверку адреса) дольше задержки самозавершения.
+    private suspend fun <T> held(block: suspend () -> T): T {
+        BgLifecycle.hold()
+        try {
+            return block()
+        } finally {
+            BgLifecycle.release(applicationContext)
+        }
+    }
+
+    private suspend fun <T> assistantNow(block: suspend () -> T): T {
         BoxApplication.initialize(applicationContext)
         try {
             return block()
