@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="Leadaxe/sing-box-lx"
+REPO="t-e-s-tweb/sing-box-lx"
 VER="${1:-$(tr -d '[:space:]' < app/android/libbox.version)}"
 DEST="app/android/app/libs"
 AAR="libbox-${VER#v}.aar"
