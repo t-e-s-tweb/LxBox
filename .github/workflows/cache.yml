@@ -123,7 +123,7 @@ jobs:
       # setup-java cache path — no extra actions/cache step needed.
       - name: Enable Gradle build-cache
         run: |
-          echo "GRADLE_OPTS=-Dorg.gradle.caching=true -Dorg.gradle.configuration-cache=true -Dorg.gradle.parallel=true" >> "$GITHUB_ENV"
+          echo "GRADLE_OPTS=-Dorg.gradle.caching=true -Dorg.gradle.parallel=true" >> "$GITHUB_ENV"
 
       - name: Inject exact release version
         working-directory: app
