@@ -8,6 +8,72 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **TrustTunnel `tt://` links by the registry ([task 717](docs/spec/tasks/717-trusttunnel-deeplink-uri.md), contract 1.1.175).**
+  The link is now read by a table: the binary container is described in the
+  protocol record of the registry, and the application no longer carries a
+  decoder written for this one format. What changed for the node: the
+  certificate name (`tls.server_name`) is always the host name of the link —
+  a custom SNI is reported and not applied, because the core has one name for
+  both and the certificate is issued for the host name; a certificate chain
+  arrives as one PEM block per certificate; the TLS profile of the link turns
+  on uTLS (Chrome, Safari, Firefox, Android), except with HTTP/3. Notices are
+  the final ones: `tt_field_unsupported` names the setting the node cannot
+  express, `tt_subscription_ignored` — a subscription address next to a
+  server, `tt_subscription_only` — a link that carries only a subscription. A link with a subscription address that is not
+  `https://` is rejected. The engine can also build a `tt://` link back from a
+  node body, byte for byte as the AdGuard encoder. Issue #194.
+  (RU: Ссылки `tt://` TrustTunnel по реестру: ссылку читает таблица — бинарный
+  контейнер описан в записи протокола реестра, отдельного декодера под этот
+  формат в приложении больше нет. Что изменилось для узла: имя сертификата
+  (`tls.server_name`) — всегда имя хоста из ссылки; свой SNI называется в
+  предупреждении и не применяется, потому что у ядра имя одно на оба смысла, а
+  сертификат выписан на имя хоста; цепочка сертификатов приезжает блоком PEM
+  на каждый сертификат; TLS-профиль ссылки включает uTLS (Chrome, Safari,
+  Firefox, Android), кроме HTTP/3. Предупреждения — финальные:
+  `tt_field_unsupported` называет настройку, которую узел выразить не может,
+  `tt_subscription_ignored` — адрес подписки рядом с сервером,
+  `tt_subscription_only` — ссылку, несущую только подписку. Ссылка с адресом подписки не `https://` отвергается. Движок
+  умеет собрать ссылку `tt://` обратно из тела узла, байт в байт как энкодер
+  AdGuard. Issue #194.)
+
+### Added
+
+- **Copy link for a TrustTunnel node from a sing-box config ([task 717](docs/spec/tasks/717-trusttunnel-deeplink-uri.md)).**
+  A `trusttunnel` node that came as an `endpoints[]` entry of a config, not as
+  a link, now gives a `tt://` link on Copy link (and in Debug API
+  `GET /nodes/link`) instead of the JSON text of the entry; the node's tag
+  becomes the name in the link. Nodes that came as a link or from a
+  TrustTunnel subscription give their original link, as before.
+  (RU: Copy link у узла TrustTunnel из конфига sing-box: узел `trusttunnel`,
+  пришедший записью `endpoints[]`, а не ссылкой, отдаёт ссылку `tt://` вместо
+  текста записи JSON — и в Debug API `GET /nodes/link`; имя в ссылке — тег
+  узла. Узлы из ссылки и из подписки TrustTunnel отдают исходную ссылку, как
+  раньше.)
+- **TrustTunnel subscriptions ([task 717](docs/spec/tasks/717-trusttunnel-deeplink-uri.md), contract 1.1.176).**
+  The address a TrustTunnel server gives out as a subscription
+  (`https://user:password@host/path`) is added as any subscription URL: the
+  server's answer becomes a `trusttunnel` node, the same one its `tt://` link
+  would give. The login and password from the address are sent to the server
+  as HTTP Basic credentials — this now works for any subscription URL with
+  credentials in it, and a password with special characters reaches the server
+  intact; the password no longer appears in the text of a download error. A
+  `tt://` link that carries only a subscription address is no longer rejected
+  when you paste it, scan it or type it in: it is added as that subscription.
+  Inside a list of links or another subscription such a link is still skipped
+  with `tt_subscription_only`.
+  (RU: Подписки TrustTunnel: адрес, который сервер TrustTunnel выдаёт как
+  подписку (`https://user:password@host/path`), добавляется как любой URL
+  подписки — ответ сервера становится узлом `trusttunnel`, тем же, что дала бы
+  его ссылка `tt://`. Логин и пароль из адреса уходят серверу как HTTP Basic —
+  теперь это работает у любого URL подписки с учётными данными, и пароль со
+  спецсимволами доходит до сервера без искажений; в текст ошибки загрузки
+  пароль больше не попадает. Ссылка `tt://`, несущая только адрес подписки,
+  при вставке, сканировании или вводе больше не отвергается: по ней
+  добавляется эта подписка. Внутри списка ссылок или чужой подписки такая
+  ссылка по-прежнему пропускается с `tt_subscription_only`.)
+
 ## [2.25.23] — 2026-11-17
 
 ### Added
@@ -32,6 +98,8 @@
 
 ### Fixed
 
+- **The Detour server window offers replace groups ([task 756](docs/spec/tasks/756-detour-picker-replace-groups.md)).** A subscription or folder replaced with a group could not be picked as a detour for another server; the window now has a Replace groups section with such groups in every mode.
+  (RU: подписку или папку, свёрнутую в группу, нельзя было выбрать как detour для другого сервера; в окне Detour server появился раздел Replace groups с такими группами во всех режимах.)
 - **The «Errors (N)» row no longer hides under the navigation bar ([task 754](docs/spec/tasks/754-errors-row-under-navigation-bar.md)).** With three-button navigation the red row on the main screen was drawn under the system buttons and a tap hit the system button; the row now sits above the bar.
   (RU: при трёхкнопочной навигации красная строка «Errors (N)» на главном рисовалась под системными кнопками, тап попадал в системную кнопку; теперь строка над панелью.)
 - **Assistant `checkUrl` / `checkExit` while the core is not up ([task 750](docs/spec/tasks/750-ai-assistant-network-control.md)).** They answer «The VPN core is not reachable yet», like `selectExit`, instead of a raw RPC error.
