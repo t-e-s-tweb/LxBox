@@ -7238,5 +7238,23 @@
   },
   "any of": {
     "value": "любое из"
+  },
+  "quarantine": {
+    "value": "карантин"
+  },
+  "%d conn · %d fail": {
+    "value": "%d соед. · %d отк."
+  },
+  "shifted keys: %d": {
+    "value": "сдвинутых ключей: %d"
+  },
+  "address problems: %d": {
+    "value": "проблем в адресе: %d"
+  },
+  "frozen for %d s": {
+    "value": "заморозка %d с"
+  },
+  "frozen until the network check ends": {
+    "value": "заморозка до конца проверки сети"
   }
 }
