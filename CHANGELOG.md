@@ -42,6 +42,17 @@
 
 ### Added
 
+- **Chain editor warns about WireGuard after the first position ([task 760](docs/spec/tasks/760-chain-wireguard-hop-warning.md)).**
+  A WireGuard node, or a group or direction with WireGuard nodes, at a chain
+  position after the first gets a warning. There the chain dials a copy of the
+  node, and the server keeps one session per WireGuard key: while the node
+  itself is in use, for example by a group check, the copy's handshakes fail,
+  and the group still shows the node as working. Saving is not blocked. Issue #233.
+  (RU: Редактор цепочки предупреждает о WireGuard после первой позиции: там
+  цепочка ходит через копию узла, а сервер держит одну сессию на ключ
+  WireGuard — пока сам узел в работе, хендшейки копии не проходят, а группа
+  показывает узел рабочим. Сохранение не запрещено.)
+
 - **Load balance: the pool's self-repair is visible ([task 759](docs/spec/tasks/759-pool-self-heal-state.md), core SPEC 138).**
   View pool and the pool section of the group screen show what the core does
   when connections fail: `quarantine` on a node taken out of rotation, the
@@ -89,6 +100,9 @@
   (RU: в Settings → Core → WireGuard три новые опции: Datagrams per read (по умолчанию 8 — около 1 МБ на туннель; умолчание самого ядра 128 стоит около 16 МБ, 1–2 — для десятков узлов), MTU-sized send buffers (диагностический, включён) и Connected tunnel socket (быстрее отдача у туннеля с одним сервером; выключен — на телефоне со сменой Wi-Fi и мобильной сети не проверен). Действуют на туннели без detour.)
 
 ### Fixed
+
+- **The VPN notification comes back after it is swiped away ([task 223](docs/spec/tasks/223-notification-live-labels.md)).** On Android 14 and later the notification of a running VPN can be swiped away or cleared with the rest of the shade (HyperOS does it on "clear all"). The tunnel kept working, but the notification stayed gone until the next connect or node change. It now returns at once while the VPN is on; after Stop it does not come back.
+  (RU: уведомление VPN возвращается, если его смахнуть: на Android 14+ его можно убрать свайпом или очисткой шторки (HyperOS убирает его кнопкой «очистить всё»), туннель продолжал работать, а уведомление не появлялось до переподключения или смены узла. Теперь оно сразу возвращается, пока VPN включён; после Stop не появляется.)
 
 - **WARP: the generator no longer writes `reserved`.** The WARP node generator put the registration's `client_id` into the peer as `reserved`; from Russian networks DPI recognises WARP by it and cuts an AmneziaWG tunnel after about 20 packets. The node is now built without `reserved`, the **Bind to this device (reserved)** option is removed from the WARP wizard, and the Debug API `POST /warp` no longer takes `includeReserved`. A node you already have keeps its `reserved` until you recreate it; imported links with `reserved` are read as before.
   (RU: генератор WARP больше не пишет `reserved`: из российских сетей DPI узнаёт WARP по `client_id` и рвёт туннель AmneziaWG примерно после 20 пакетов. Узел строится без `reserved`, опция Bind to this device (reserved) убрана из мастера WARP, Debug API `POST /warp` больше не принимает `includeReserved`. Уже созданный узел сохраняет `reserved` до пересоздания; импортируемые ссылки с `reserved` читаются как раньше.)
