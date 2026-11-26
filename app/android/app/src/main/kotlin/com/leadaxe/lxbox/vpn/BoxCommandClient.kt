@@ -983,23 +983,70 @@ class BoxCommandClient(private val logWarning: (String) -> Unit) {
         }
     }
 
-    fun getPool(tag: String): List<Map<String, Any>>? {
+    /// §761 — конфиг после перезаписи ядра (`GetEffectiveConfig`, ядро
+    /// v1.14.4-lx.37-rc.2, SPEC 165): хопы цепочек, перехваченный detour,
+    /// выровненный MTU. Тот же `RunningConfig` с `content()`, что у
+    /// [getRunningConfig]; null = недоступен.
+    fun getEffectiveConfig(): String? {
+        val client = ensurePingClient() ?: run {
+            Log.w(TAG, "getEffectiveConfig: no command client (paused/down)")
+            return null
+        }
+        return runCatching {
+            client.getEffectiveConfig().content().takeIf { it.isNotEmpty() }
+        }.getOrElse {
+            Log.d(TAG, "getEffectiveConfig unavailable: ${it.message}")
+            null
+        }
+    }
+
+    /// §761 — один узел, группа, endpoint или хоп цепочки JSON-объектом
+    /// `{tag, original, effective, changes}` (`GetOutboundConfig(tag)`, SPEC 165
+    /// §2.2). null = недоступен или тег неизвестен (NotFound).
+    fun getOutboundConfig(tag: String): String? {
+        val client = ensurePingClient() ?: run {
+            Log.w(TAG, "getOutboundConfig: no command client (paused/down)")
+            return null
+        }
+        return runCatching {
+            client.getOutboundConfig(tag).content().takeIf { it.isNotEmpty() }
+        }.getOrElse {
+            Log.d(TAG, "getOutboundConfig($tag) unavailable: ${it.message}")
+            null
+        }
+    }
+
+    /// §759 — пул вместе с состоянием самовосстановления группы (ядро SPEC 138,
+    /// `GetPoolState`): у слота карантин и счётчики, у группы сдвинутые ключи,
+    /// «проблемы в адресе» и заморозка. Вне round_robin всё нулевое. Dart
+    /// (`CcPoolState.fromWire`) принимает и прежний список слотов.
+    fun getPool(tag: String): Map<String, Any>? {
         val client = ensurePingClient() ?: run {
             Log.w(TAG, "getPool: no command client (paused/down)")
             return null
         }
         return runCatching {
-            val out = ArrayList<Map<String, Any>>()
-            val it: PoolSlotIterator = client.getPool(tag)
+            val state = client.getPoolState(tag)
+            val slots = ArrayList<Map<String, Any>>()
+            val it: PoolSlotIterator = state.slots()
             while (it.hasNext()) {
                 val s = it.next()
-                out.add(mapOf(
+                slots.add(mapOf(
                     "slot" to s.slot,
                     "tag" to s.tag,
                     "delay" to s.delay,
+                    "quarantined" to s.quarantined,
+                    "connections" to s.connections,
+                    "confirmedFailures" to s.confirmedFailures,
                 ))
             }
-            out
+            mapOf(
+                "slots" to slots,
+                "shiftedKeys" to state.shiftedKeys,
+                "markedKeys" to state.markedKeys,
+                "frozen" to state.frozen,
+                "frozenSeconds" to state.frozenSeconds,
+            )
         }.getOrElse {
             Log.w(TAG, "getPool RPC failed: ${it.message}")
             null

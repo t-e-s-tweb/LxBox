@@ -150,11 +150,18 @@ void main() {
           contains('repeats'));
     });
 
-    test('неизвестный ключ strip называет допустимые', () {
+    test('§761: rewrite не трогает detour и всегда объект', () {
+      SourceChain c(Map<String, dynamic> rw) => SourceChain(
+          tag: 'c', hops: const [NodeLink(tag: 'a'), NodeLink(tag: 'b')], rewrite: rw);
+      expect(chainEmitError(c({'vless': {'detour': 'x'}})), contains('detour'));
+      expect(chainEmitError(c({'vless': 1})), contains('not an object'));
+      expect(chainEmitError(c({'vless': {'flow': null}})), isEmpty);
+    });
+
+    test('§761: ключи strip цепочку не валят — в конфиг не пишутся', () {
       final err = chainEmitError(const SourceChain(
           tag: 'c', hops: [NodeLink(tag: 'a'), NodeLink(tag: 'b')], strip: {'tls.nope': true}));
-      expect(err, contains('unknown key'));
-      expect(err, contains('tls.utls'));
+      expect(err, isEmpty);
     });
   });
 
@@ -177,14 +184,15 @@ void main() {
       expect(ob.containsKey('idle_timeout'), isFalse);
     });
 
-    test('strip обходится по каталогу, а не по порядку ключей Map', () {
+    test('§761: idle_timeout / strip_evasion / strip в объект не попадают', () {
       final ob = chainOutboundObject(const SourceChain(
         tag: 'c',
         hops: [NodeLink(tag: 'a'), NodeLink(tag: 'b')],
-        // Намеренно обратный каталогу порядок.
+        idleTimeout: '10m',
+        stripEvasion: false,
         strip: {'tls.utls': true, 'tls.fragment': false},
       ), const ['a', 'b']);
-      expect((ob['strip'] as Map).keys.toList(), ['tls.fragment', 'tls.utls']);
+      expect(ob.keys.toSet(), {'tag', 'type', 'outbounds'});
     });
 
     test('rewrite копируется, а не разделяется с моделью', () {

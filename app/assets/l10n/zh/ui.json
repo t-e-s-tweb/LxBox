@@ -3574,9 +3574,6 @@
   "One-way": {
     "value": "单向"
   },
-  "One-way DPI tricks make no sense on a link that dials through the previous hop.": {
-    "value": "对经由上一跳拨号的链路，单向 DPI 绕过手段没有意义。"
-  },
   "One-way traffic": {
     "value": "单向流量"
   },
@@ -3706,9 +3703,6 @@
   "Pay": {
     "value": "支付"
   },
-  "Per-key overrides": {
-    "value": "逐项覆盖"
-  },
   "Phone → %1$s → %2$s → Internet": {
     "value": "手机 → %1$s → %2$s → 互联网"
   },
@@ -3805,8 +3799,11 @@
   "Position %s is MASQUE with fixed h3: QUIC through the previous hop may hang. Set vhttp: auto (or h2) on the node.": {
     "value": "位置 %s 是固定 h3 的 MASQUE：经上一跳的 QUIC 可能卡住。请把该节点的 vhttp 设为 auto（或 h2）。"
   },
-  "Not recommended: positions %s are WireGuard or contain WireGuard nodes. After the first position the chain dials a copy of the node, and the server keeps one session per WireGuard key. While the node itself is in use, for example by a group check, the copy's handshakes fail, and the group still shows the node as working.": {
-    "value": "不建议：位置 %s 是 WireGuard 或包含 WireGuard 节点。从第二个位置起，链路通过节点的副本连接，而服务器对每个 WireGuard 密钥只保留一个会话。当节点本身也在使用中（例如被组检测）时，副本的握手会失败，而组仍显示该节点可用。"
+  "Not recommended: positions %s are tunnels (WireGuard, MASQUE, Tailscale, OpenVPN, OpenConnect) or contain them. After the first position the chain dials a copy of the node with the same keys, and a tunnel server keeps one session per key. While the node itself is in use, for example by a group check, the copy and the node knock each other off, and the group still shows the node as working.": {
+    "value": "不建议：位置 %s 是隧道（WireGuard、MASQUE、Tailscale、OpenVPN、OpenConnect）或包含隧道。从第二个位置起，链路通过使用相同密钥的节点副本连接，而隧道服务器对每个密钥只保留一个会话。当节点本身也在使用中（例如被组检测）时，副本与节点会相互挤掉，而组仍显示该节点可用。"
+  },
+  "Tunnel: not recommended after the first position": {
+    "value": "隧道：不建议放在第一个位置之后"
   },
   "Position %s is WireGuard behind a TCP hop: the previous server must actually proxy UDP, otherwise the handshake goes nowhere.": {
     "value": "位置 %s 是位于 TCP 跳之后的 WireGuard：上一跳服务器必须能真正转发 UDP，否则握手无处可去。"
@@ -4658,9 +4655,6 @@
   "Strict tunnel — all traffic goes through tun.": {
     "value": "严格隧道——所有流量都经 tun。"
   },
-  "Strip evasion tricks from links": {
-    "value": "去除链接中的规避手段"
-  },
   "Subscription": {
     "value": "订阅",
     "special": {
@@ -5417,9 +5411,6 @@
   "empty = core default": {
     "value": "留空 = 内核默认值"
   },
-  "empty = core default (5m); 0s = keep until stop": {
-    "value": "留空 = 内核默认（5m）；0s = 保持到停止"
-  },
   "empty = no prefix": {
     "value": "留空 = 不加前缀"
   },
@@ -5467,9 +5458,6 @@
   },
   "keep the fastest server until it fails": {
     "value": "保持最快的服务器，直到它失效"
-  },
-  "kept": {
-    "value": "保留"
   },
   "latency-tested twin of this direction": {
     "value": "该方向的延迟测速副本"
@@ -5580,9 +5568,6 @@
   },
   "storage shape (lxbox_settings.json)": {
     "value": "存储格式（lxbox_settings.json）"
-  },
-  "stripped": {
-    "value": "已去除"
   },
   "taken from member names; empty = no badges. Display only — not sent to the core": {
     "value": "取自成员名称；留空 = 不显示标记。仅供显示——不会发送给内核"
@@ -6648,8 +6633,8 @@
   "Core: lx.wg.connected_socket. The tunnel socket is connected to the server; a failed send or a route change disconnects it, and it hears a server that moved to a new address only after the next handshake retry.": {
     "value": "内核：lx.wg.connected_socket。隧道套接字连接到服务器；发送失败或路由变化会断开连接，更换了地址的服务器要到下一次握手重试后才能被听到。"
   },
-  "Core: lx.mtu_align. A node over a tunnel gets a packet size that fits into it: mtu for WireGuard and MASQUE, the initial packet size for Hysteria2 and TUIC. Values are never raised.": {
-    "value": "内核：lx.mtu_align。隧道之上的节点获得能放入隧道的包大小：WireGuard 和 MASQUE 为 mtu，Hysteria2 和 TUIC 为初始包大小。数值只降不升。"
+  "Core: lx.detour.mtu_align. A node over a tunnel gets a packet size that fits into it: mtu for WireGuard and MASQUE, the initial packet size for Hysteria2 and TUIC. Values are never raised.": {
+    "value": "内核：lx.detour.mtu_align。隧道之上的节点获得能放入隧道的包大小：WireGuard 和 MASQUE 为 mtu，Hysteria2 和 TUIC 为初始包大小。数值只降不升。"
   },
   "Core: lx.masque.idle_timeout. The idle window for MASQUE nodes that have no idle_timeout of their own.": {
     "value": "内核：lx.masque.idle_timeout。没有自身 idle_timeout 的 MASQUE 节点的空闲窗口。"
@@ -6969,7 +6954,46 @@
   "frozen for %d s": {
     "value": "冻结 %d 秒"
   },
-  "frozen until the network check ends": {
-    "value": "冻结至网络检查结束"
+  "frozen": {
+    "value": "冻结"
+  },
+  "Effective": {
+    "value": "生效"
+  },
+  "Original": {
+    "value": "原始"
+  },
+  "No data from the core: the tunnel is not running or the node is not in the running config.": {
+    "value": "内核无数据：隧道未运行，或运行中的配置里没有该节点。"
+  },
+  "Changed by the core": {
+    "value": "内核所做的更改"
+  },
+  "chain %s, position %d": {
+    "value": "链 %s，位置 %d"
+  },
+  "rewrite of chain %s, position %d": {
+    "value": "链 %s 的 rewrite，位置 %d"
+  },
+  "MTU alignment (%s) under %s": {
+    "value": "MTU 对齐（%s），下层 %s"
+  },
+  "\"%s\" at position %d is also inside \"%s\" at the entry — make a copy of \"%s\" without \"%s\" for the entry.": {
+    "value": "“%1$s”（位置 %2$d）也在入口的“%3$s”中——请为入口复制一份不含“%5$s”的“%4$s”。"
+  },
+  "\"%s\" is the entry and also inside \"%s\" at position %d — make a copy of \"%s\" without \"%s\" for this position.": {
+    "value": "“%s”是入口，同时也在位置 %3$d 的“%2$s”中——请为该位置复制一份不含“%5$s”的“%4$s”。"
+  },
+  "\"%s\" is at positions %d and %d — make a copy of \"%s\" without \"%s\" for position %d.": {
+    "value": "“%s”同时位于位置 %d 和 %d——请为位置 %6$d 复制一份不含“%5$s”的“%4$s”。"
+  },
+  "\"%s\" is used in chain \"%s\" (position %d) and here at position %d — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.": {
+    "value": "“%s”已在链“%s”（位置 %d）中使用，这里又在位置 %d——请为其中之一复制“%s”（及其节点；WireGuard 副本需要其他密钥）。"
+  },
+  "The detour of \"%s\" at the entry leads to \"%s\", which this chain takes over higher up — remove that detour or take \"%s\" out of this chain.": {
+    "value": "入口处“%s”的 detour 指向“%s”，而该链在更高位置接管了它——请删除该 detour，或把“%s”移出此链。"
+  },
+  "The tag \"%s\" is taken by a node or group; the chain needs it for its hop — rename that node.": {
+    "value": "标签“%s”已被节点或组占用，而链的跃点需要它——请重命名该节点。"
   }
 }

@@ -10,6 +10,29 @@
 
 ### Changed
 
+- **Hop chains for core `v1.14.4-lx.37-rc.2` ([task 761](docs/spec/tasks/761-core-rc2-chain-detour.md)).**
+  The core will route every node past the first chain position through the
+  chain itself, with no link copies. The config no longer carries the chain
+  keys `idle_timeout`, `strip_evasion` and `strip` (saved values stay in the
+  chain and the backup); the chain editor loses its Advanced block. The
+  `mtu_align` setting is written to `lx.detour.mtu_align`, old mixins are
+  rewritten. One node or group has one path: a ring (a node at the entry and
+  also inside a Direction higher in the chain, or a detour back into the
+  chain) or a conflict (a node or group on a later position used again in the
+  chain or in another chain) is an error. The editor does not save such a
+  chain and says which copy to make; the build drops it with the same hint. Nodes
+  past the first position lose fixed local ports. Internal `chain-hop`
+  outbounds are hidden. The JSON tab of the node screen shows the node as the
+  core runs it, with the core's changes. Needs the rc2 core, not pinned yet.
+
+- **Core `v1.14.4-lx.37-rc.1`.** `round_robin` repairs itself on a failed
+  connection instead of waiting for the next check: a retry through another
+  slot, a dead node replaced from a reserve of live nodes, a node that fails
+  more than the rest set aside until the next check. A manual group test now
+  clears the latency of nodes that did not answer. Also: a `tls.fragment`
+  hang fixed, `least_test` and `failover` leave a node whose server refuses
+  connections, SOCKS and ShadowTLS handshakes limited to 15 s.
+
 - **TrustTunnel `tt://` links by the registry ([task 717](docs/spec/tasks/717-trusttunnel-deeplink-uri.md), contract 1.1.175).**
   The link is now read by a table: the binary container is described in the
   protocol record of the registry, and the application no longer carries a
@@ -42,16 +65,18 @@
 
 ### Added
 
-- **Chain editor warns about WireGuard after the first position ([task 760](docs/spec/tasks/760-chain-wireguard-hop-warning.md)).**
-  A WireGuard node, or a group or direction with WireGuard nodes, at a chain
-  position after the first gets a warning. There the chain dials a copy of the
-  node, and the server keeps one session per WireGuard key: while the node
-  itself is in use, for example by a group check, the copy's handshakes fail,
-  and the group still shows the node as working. Saving is not blocked. Issue #233.
-  (RU: Редактор цепочки предупреждает о WireGuard после первой позиции: там
-  цепочка ходит через копию узла, а сервер держит одну сессию на ключ
-  WireGuard — пока сам узел в работе, хендшейки копии не проходят, а группа
-  показывает узел рабочим. Сохранение не запрещено.)
+- **Chain editor warns about tunnels after the first position ([task 760](docs/spec/tasks/760-chain-tunnel-hop-warning.md)).**
+  WireGuard (AmneziaWG included), MASQUE, Tailscale, OpenVPN and OpenConnect
+  at a chain position after the first, as a node or inside a group or
+  direction, get a warning, and the list of positions to add marks them. There
+  the chain dials a copy of the node with the same keys, and a tunnel server
+  keeps one session per key: while the node itself is in use, for example by a
+  group check, the copy and the node knock each other off, and the group still
+  shows the node as working. Saving is not blocked. Issue #233.
+  (RU: Редактор цепочки предупреждает о туннелях после первой позиции —
+  WireGuard, MASQUE, Tailscale, OpenVPN, OpenConnect — и помечает их в списке
+  добавления: там цепочка ходит через копию узла с теми же ключами, а сервер
+  держит одну сессию на ключ. Сохранение не запрещено.)
 
 - **Load balance: the pool's self-repair is visible ([task 759](docs/spec/tasks/759-pool-self-heal-state.md), core SPEC 138).**
   View pool and the pool section of the group screen show what the core does
@@ -60,8 +85,7 @@
   of sticky keys moved to another slot, the number of addresses marked as the
   problem, and a freeze with the seconds left. A healthy pool looks as before.
   The traffic profiler records the node a connection actually went through
-  when the core reports it after the connection was opened. Works with the
-  core that has `GetPoolState`; the pin is raised separately.
+  when the core reports it after the connection was opened.
 
 - **Copy link for a TrustTunnel node from a sing-box config ([task 717](docs/spec/tasks/717-trusttunnel-deeplink-uri.md)).**
   A `trusttunnel` node that came as an `endpoints[]` entry of a config, not as

@@ -75,8 +75,11 @@ are hidden from node selection.
   is broken", "§254 — cycle through a selector: 1 culprit", "cap: show no
   more than … culprits". **Mutation:** break all edges of the ring.
 - **P7. A chain is a `type: chain` node in packet order.** Positions go out
-  verbatim in the `outbounds` key; `idle_timeout`, `strip_evasion`, `strip`,
-  `rewrite` are written only when set; the chain gets into the Direction
+  verbatim in the `outbounds` key; `rewrite` is written only when set;
+  `idle_timeout`, `strip_evasion`, `strip` stay in storage but are not written
+  (core `v1.14.4-lx.37-rc.2` rejects them, task 761); nodes past the first
+  position lose fixed local ports, socket options stay;
+  the chain gets into the Direction
   pool on a par with servers. **Witness:** units "hop order = PACKET order",
   "defaults are not written into the config", "a chain is a node: the
   Direction filter catches it". **Mutation:** sorting or deduplicating
@@ -155,12 +158,30 @@ are hidden from node selection.
 | Subscription / folder | Replace with a group: Manual · Auto · Both, Group name | — | not folded | `selector` / `urltest` |
 | Chain | Tag (`chain-N`), Enabled | — | first free, empty, on | `tag` |
 | Chain | Positions | ≥2, in packet order | — | `outbounds` |
-| Chain → Advanced | Idle timeout · Strip evasion tricks from links · Per-key overrides (three-state) | empty = core (5m) · on · untouched | — | `idle_timeout`, `strip_evasion`, `strip` |
 | Chain | rewrite | JSON merge-patch by node type, not editable in the form | `{}` | `rewrite` |
 
-The catalog of `strip` keys and their defaults is contract registry data,
-not application data. The minimum core version for chains is
-`1.14.0-lx.27-rc.5`.
+The minimum core version for chains is `1.14.0-lx.27-rc.5`. From
+`v1.14.4-lx.37-rc.2` (task 761) the core rewrites the `detour` of the nodes on
+positions ≥ 1 itself and adds internal `chain-hop` outbounds; the app hides
+them, and the node screen shows the node's JSON as the core runs it. What it
+means for the user:
+
+- a node on position ≥ 1 goes the chain's path everywhere, including a direct
+  route to it and a manual check;
+- a group on position ≥ 1 is in the chain as a whole: every member, picked or
+  not, goes through the position below;
+- `direct` picked by a group on position ≥ 1 goes through the position below,
+  not around the chain;
+- one node or group has one path; the app makes no copies. A ring (a node or
+  group reached at the entry and higher in the same chain, e.g.
+  `[A, Direction{A, X}]`, or an entry node's own `detour` into a higher
+  position) and a conflict (a node or group needed on position ≥ 1 and met
+  again on another position ≥ 1 or in another chain; a shared entry of two
+  chains is fine) are errors. The editor does not save such a chain and says
+  what to do ("make a copy of X without A for this position", "make a copy of
+  X (and its nodes; WireGuard copies need other keys) for one of them"); the
+  build drops it with the same hint, the rest is built. A nested chain past
+  the first position and a taken hop tag — the same.
 
 ## Inputs / Outputs
 

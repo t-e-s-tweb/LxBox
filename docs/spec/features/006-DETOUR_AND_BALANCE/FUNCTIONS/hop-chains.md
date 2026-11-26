@@ -28,16 +28,13 @@ filters select it, it can be chosen on the main screen.
 | Tag | `chain-N` (first free) or custom; editable — references to the old tag are rewritten | `chain-N` | `tag` |
 | Enabled | on/off | on | a disabled one is not emitted |
 | Positions | ≥2, in packet order; a position is a node, a subscription group, a Direction, `direct-out`, a chain higher in the list (first position only) | — | `outbounds` |
-| Idle timeout | duration, `0s` = live until stop | empty = core default 5m | `idle_timeout` |
-| Strip evasion tricks from links | on/off/untouched | untouched = core (on) | `strip_evasion` (only if set) |
-| Per-key overrides | registry catalog keys: untouched / strip / keep | untouched | `strip` |
+| Idle timeout, Strip evasion, Per-key overrides | kept in storage and backup | — | not written (task 761: core `v1.14.4-lx.37-rc.2` rejects `idle_timeout`, `strip_evasion`, `strip`) |
 | rewrite | merge-patch by node type | `{}` | `rewrite` |
 
 ## Inputs / Outputs
 
 **Inputs:** the list of chains in declaration order; final tags of nodes,
-Directions, service outbounds, chains above; node bodies at positions (for
-the `strip` catalog rules); the core version.
+Directions, service outbounds, chains above; the core version.
 **Outputs:** the outbound `{"type":"chain","outbounds":[…], …}` before
 Direction groups; the chain tag in Direction pools; warnings with codes
 `chain_unsupported_by_core`, `chain_invalid`, `chain_hop_missing`,
@@ -50,16 +47,22 @@ Direction groups; the chain tag in Direction pools; warnings with codes
   1. core older than `1.14.0-lx.27-rc.5` — "Hop chain … was skipped" (a
      malformed version string — the chain is emitted);
   2. core invariants: <2 positions, an empty position, self-reference, a
-     repeat, an unknown `strip` key, an empty type name in `rewrite`;
+     repeat, an empty type name in `rewrite`;
   3. the tag is taken by a node, a Direction or another chain;
   4. a position did not resolve — "A route without a hop is a different
      route, so the whole chain is skipped."; this also covers a reference to
      a chain lower in the list (cycles between chains are excluded by
      order);
   5. a nested chain not in the first position.
-- A link requires a strippable path (e.g. `tls.utls` for REALITY at position
-  ≥2): the key is removed from the patch, the chain is built, the code goes
-  into a warning. Position 1 is not judged.
+- One path per node or group (task 761), no copies: a ring (reached at the
+  entry and higher in the same chain, or an entry node's `detour` into a higher
+  position), a conflict (needed on position ≥ 1 and met on another position
+  ≥ 1 or in another chain; a shared entry is fine), a taken hop tag
+  `<chain>#<i>` — the chain is dropped with a warning that says which copy to
+  make. Of two conflicting chains the lower one in the list drops.
+- Nodes past the first position lose WireGuard `listen_port`, Tailscale
+  `listen_port`/`relay_server_port`, OpenConnect `dtls_local_port` with a build
+  warning; socket options stay (the core accepts them under `detour`).
 - A Direction does not take a chain going through it, including transitively
   (P9): "Hop chain "…" runs through direction "…" and was left out of
   it…". The subtraction is not counted as a fault of the Direction's filter.
@@ -100,3 +103,4 @@ Direction groups; the chain tag in Direction pools; warnings with codes
 | 7 | [524](../../../tasks/524-unified-source-entries.md) | Released v2.25.3 | A chain is a row of the shared source list |
 | 8 | [594](../../../tasks/594-chain-label-removed-tag-only.md) | Done | The chain name (label) removed again: the tag is the one name |
 | 9 | [609](../../../tasks/609-chain-tag-editable.md) | Done | The tag is editable, like a node's: the place in the list stays, references follow the new tag |
+| 10 | [761](../../../tasks/761-core-rc2-chain-detour.md) | In progress (branch, waits for core rc2) | No `idle_timeout`/`strip_evasion`/`strip` in the config; ports and socket options removed past the first position |

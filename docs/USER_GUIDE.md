@@ -681,7 +681,7 @@ options:
 | Mode | How the node is chosen |
 |---|---|
 | **Fastest** | All traffic goes to the single node with the lowest measured latency. |
-| **Load balance** | Connections spread across a pool of several live nodes. A session stays on one node by the keys in Sticky session by, by default by app and domain, so rotation does not break connections. With no keys ticked, nodes alternate freely. Only the pool is health-checked; the other nodes in the list show latencies from Auto-ping after connect or the core's own measurements, marked `~`. **View pool** in the auto node's long-press menu lists the pool's slots with their nodes and latencies. When the pool repairs itself, the same list shows it: `quarantine` on a node taken out of rotation for dropping connections, the slot's connections and confirmed failures, and above the slots — how many sticky keys were moved to another slot, how many addresses were marked as the problem, and a freeze with the seconds left while the device's own network is down. |
+| **Load balance** | Connections spread across a pool of several live nodes. A session stays on one node by the keys in Sticky session by, by default by app and domain, so rotation does not break connections. With no keys ticked, nodes alternate freely. Only the pool is health-checked; the other nodes in the list show latencies from Auto-ping after connect or the core's own measurements, marked `~`. **View pool** in the auto node's long-press menu lists the pool's slots with their nodes and latencies. When the pool repairs itself, the same list shows it: `quarantine` on a node taken out of rotation for dropping connections, the slot's connections and confirmed failures, and above the slots — how many sticky keys were moved to another slot, how many addresses were marked as the problem, and a freeze with the seconds left — for 15 s after the device wakes, the network changes or the clock jumps the group draws no conclusions. |
 | **Hold until failure** | The current node stays while it works; after a failure the choice moves to the next live one. Auto-ping after connect does not move it. |
 
 How Load balance fills its pool depends on Pool tolerance (ms):
@@ -1431,13 +1431,16 @@ running core.
   only over UDP and has no fallback transport. You cannot spot the bad case in
   advance: the connection looks successful, and the server either forwards the
   datagrams or drops them without a word.
-- WireGuard after the first position is not recommended, whether it is a
-  node or a group or direction with WireGuard nodes. From the second position
-  on, the chain dials a copy of the node, and the server keeps one session per
-  WireGuard key. While the node itself is also in use, for example by a group
-  check, the copy's handshakes fail, and the group still shows the node as
-  working. The chain editor warns about such positions; the chain can still be
-  saved.
+- Tunnels after the first position are not recommended: WireGuard
+  (AmneziaWG included), MASQUE, Tailscale, OpenVPN and OpenConnect, as a node
+  or inside a group or direction. From the second position on, the chain dials
+  a copy of the node with the same keys, and a tunnel server keeps one session
+  per key. While the node itself is also in use, for example by a group check,
+  the copy and the node knock each other off, and the group still shows the
+  node as working. The chain editor warns about such positions and marks
+  tunnels in the list of positions to add; the chain can still be saved. Proxy
+  protocols (VLESS, Trojan, Hysteria2, TUIC and others) open a connection per
+  request and are not affected.
 - An HTTP proxy carries only TCP connections. Nodes with a TCP transport
   (VLESS, Trojan, VMess) work behind it fully, including the UDP of apps that
   they wrap inside their own stream. Nodes that speak UDP themselves
