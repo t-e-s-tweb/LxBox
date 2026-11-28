@@ -32,6 +32,7 @@ import '../widgets/node_diagnostics_tab.dart';
 import '../widgets/openconnect_form.dart';
 import '../services/contract/form_source_sync.dart';
 import '../widgets/tailscale_network_tab.dart';
+import '../widgets/openconnect_status_tab.dart';
 import '../services/tailscale_network.dart';
 import '../services/l10n/locale_controller.dart';
 import '../services/probe/probe_detour.dart';
@@ -84,8 +85,8 @@ class NodeSettingsScreen extends StatefulWidget {
   final int initialTab;
 
   /// Индекс вкладки Diagnostics: Settings, Source, JSON, Diagnostics. У узла
-  /// Tailscale перед Diagnostics стоит Network (§581), у WireGuard/AmneziaWG
-  /// — INI (§686 п. 9): экран сдвигает индекс сам.
+  /// Tailscale и OpenConnect перед Diagnostics стоит Network (§581, §764), у
+  /// WireGuard/AmneziaWG — INI (§686 п. 9): экран сдвигает индекс сам.
   static const diagnosticsTabIndex = 3;
 
   @override
@@ -156,6 +157,9 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
   /// §581 — узел Tailscale: есть вкладка Network.
   bool _isTailscale = false;
 
+  /// §764 — узел OpenConnect: есть вкладка Network (состояние шлюза).
+  bool _isOpenConnect = false;
+
   /// §686 п. 9 — узел WireGuard/AmneziaWG: есть вкладка INI.
   bool _isWireguard = false;
 
@@ -179,7 +183,12 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
     _isTailscale = first is TailscaleSpec;
     // §686 п. 9 — у WireGuard/AmneziaWG вкладка INI после JSON.
     _isWireguard = first is WireguardSpec;
-    final count = 4 + (_isTailscale ? 1 : 0) + (_isWireguard ? 1 : 0);
+    // §764 — у OpenConnect вкладка Network перед Diagnostics.
+    _isOpenConnect = first?.protocol == kOpenConnectScheme;
+    final count = 4 +
+        (_isTailscale ? 1 : 0) +
+        (_isWireguard ? 1 : 0) +
+        (_isOpenConnect ? 1 : 0);
     var initial = widget.initialTab.clamp(0, 3);
     if (initial == NodeSettingsScreen.diagnosticsTabIndex) {
       initial = count - 1;
@@ -243,6 +252,38 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
 
   /// §686 — группа auto-узла папки (член `kind: auto`); `null` — иной узел.
   /// Решает тип узла, а не экран, откуда открыли карточку.
+  /// Подпись вкладки источника — имя протокола узла (решение владельца
+  /// 26.11.2026: «Source → OpenConnect (название протокола)»). У узла
+  /// автовыбора и неизвестного типа — «Source».
+  String get _sourceTabLabel {
+    if (_autoGroup != null) return getLocalText.s("Source");
+    if (_isAwg) return 'AmneziaWG'; // l10n-exempt: protocol name
+    final p = _node?.protocol ?? '';
+    // l10n-exempt: protocol names
+    const names = {
+      'vless': 'VLESS',
+      'vmess': 'VMess',
+      'trojan': 'Trojan',
+      'shadowsocks': 'Shadowsocks',
+      'hysteria': 'Hysteria',
+      'hysteria2': 'Hysteria2',
+      'tuic': 'TUIC',
+      'naive': 'NaïveProxy',
+      'anytls': 'AnyTLS',
+      'ssh': 'SSH',
+      'socks': 'SOCKS',
+      'http': 'HTTP',
+      'wireguard': 'WireGuard',
+      'masque': 'MASQUE',
+      'tailscale': 'Tailscale',
+      'openconnect': 'OpenConnect',
+      'openvpn-client': 'OpenVPN',
+      'trusttunnel': 'TrustTunnel',
+      'impair': 'impair',
+    };
+    return names[p] ?? getLocalText.s("Source");
+  }
+
   AutoSelectSpec? get _autoGroup {
     final n = _member?.node;
     return n is AutoSelectSpec ? n : null;
@@ -297,7 +338,11 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
         ? getLocalText.s("No address (Tailscale)")
         : node.isAddressless
             ? getLocalText.s("No address")
-            : '${node.server}:${node.port}';
+            // Порт 0 — узел без отдельного порта (OpenConnect: адрес шлюза
+            // целиком в `server`, с портом внутри URL) — «:0» не дописываем.
+            : node.port > 0
+                ? '${node.server}:${node.port}'
+                : node.server;
     // §455 — источник как есть; предпросмотр JSON — то, что уйдёт в ядро:
     // у записи вида `singbox` это объект узла (дословно), иначе emit()
     // модели. §722 — гейт тот же, что у сборки (`verbatimBodyOf`): вид
@@ -305,10 +350,17 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
     final raw = _containerRaw;
     _sourceCtrl.text = raw;
     _dialect = _containerDialect;
-    Object? bodyOf(NodeSpec n) => _dialect == SourceDialect.singbox &&
-            n.rawSource.trimLeft().startsWith('{')
-        ? jsonDecode(n.rawSource)
-        : n.emit(TemplateVars.empty).map;
+    Object? bodyOf(NodeSpec n) {
+      if (_dialect != SourceDialect.singbox ||
+          !n.rawSource.trimLeft().startsWith('{')) {
+        return n.emit(TemplateVars.empty).map;
+      }
+      final body = jsonDecode(n.rawSource);
+      // §456 — имя узла главнее `tag` в тексте.
+      if (body is Map && n.tag.isNotEmpty) body['tag'] = n.tag;
+      return body;
+    }
+
     final Object? preview = node is AutoSelectSpec && member != null
         ? autoGroupJsonPreview(node) // §686
         : bodyOf(node);
@@ -514,10 +566,9 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
     // §722 — Save на Source — вход текста: вид определяет движок, вставка
     // другого диалекта меняет вид записи. Тег — по правилу вида
     // (`prepareNodeDocumentForSave`); §575 — кроме узлов ничего не хранится.
-    // Побеждает тот, кого трогали: поле Tag не меняли — тег, исправленный в
-    // самом тексте, остаётся; меняли — поле вписывается в текст.
+    // §456 — поле Tag меняли: имя уходит в `tag` записи, текст не меняется.
+    // Не меняли: имя решает контроллер.
     final prep = prepareNodeDocumentForSave(text, _tagCtrl.text,
-        oldTag: _originalTag,
         tagTouched: _tagCtrl.text.trim() != _originalTag);
     if (prep is NodeDocumentRejected) {
       _snack(prep.message);
@@ -876,13 +927,16 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(text: getLocalText.s("Settings")),
-              Tab(text: getLocalText.s("Source")),
+              Tab(text: getLocalText.s("Node")),
+              // Вкладка источника названа протоколом узла: у OpenConnect там
+              // форма настроек, у остальных — исходный текст узла.
+              Tab(text: _sourceTabLabel),
               // l10n-exempt: format name, locale-invariant
               const Tab(text: 'JSON'),
               // l10n-exempt: format name, locale-invariant
               if (_isWireguard) const Tab(text: 'INI'),
-              if (_isTailscale) Tab(text: getLocalText.s("Network")),
+              if (_isTailscale || _isOpenConnect)
+                Tab(text: getLocalText.s("Network")),
               NodeDiagnosticsTabLabel(warnings: _notifications),
             ],
           ),
@@ -913,6 +967,11 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
                             _recordFlag(NodeRecordFlag.disableTaildropAutosave),
                       ),
                       onSaveRecordFlag: _saveTaildropFlag,
+                    ),
+                  if (_isOpenConnect)
+                    OpenConnectStatusTab(
+                      liveTag: TagResolver.displayTag(
+                          widget.entry.list.tagPrefix, _originalTag),
                     ),
                   // §392/§501 — диагностика + уведомления узла.
                   NodeDiagnosticsTab(
@@ -1390,6 +1449,7 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
   Widget _buildSourceTab(ThemeData theme) {
     // §686 — у auto-узла источник — запись группы, подписи вида нет.
     final isAuto = _autoGroup != null;
+    final isOpenConnect = _node?.protocol == kOpenConnectScheme;
     final kindNote = switch (_dialect) {
       SourceDialect.singbox => getLocalText.s(
           "sing-box JSON: sent to the core as is. The core checks it on save."),
@@ -1398,19 +1458,39 @@ class _NodeSettingsScreenState extends State<NodeSettingsScreen>
       SourceDialect.wgIni => getLocalText.s(
           "WireGuard config: saved as is. The tag is stored separately."),
       SourceDialect.uri =>
-        getLocalText.s("Link: the tag goes into its fragment on save."),
+        getLocalText.s("Link: saved as is. The tag is stored separately."),
     };
     return ListView(
       padding:
           EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 24),
       children: [
-        _sectionHeader(getLocalText.s("Source"),
-            getLocalText.s("The node's original text. Save writes it as is."), theme),
-        if (_node?.protocol == kOpenConnectScheme)
+        // OpenConnect: шапка — что это за клиент (владелец 26.11.2026), под
+        // ней форма; подпись про исходный текст — над полем текста.
+        if (isOpenConnect)
+          _sectionHeader(
+              'OpenConnect', // l10n-exempt: protocol name
+              getLocalText.s(
+                  "SSL VPN client: Cisco AnyConnect (ocserv), Fortinet, Palo Alto GlobalProtect, Juniper / Pulse Secure."),
+              theme)
+        else
+          _sectionHeader(getLocalText.s("Source"),
+              getLocalText.s("The node's original text. Save writes it as is."), theme),
+        if (isOpenConnect) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: _buildOpenConnectSourceForm(theme),
           ),
+          Padding(
+            key: const ValueKey('openconnect-source-note'),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              getLocalText.s(
+                  "Source — the node's original text. Save writes it as is."),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           // §614/§624 — редактор с подсветкой: язык по виду источника на

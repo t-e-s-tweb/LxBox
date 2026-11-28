@@ -670,7 +670,7 @@ cc_channel.dart              # §122 CcChannel.instance — the Dart client of t
                              #   a broadcast (ONE native sink per channel, the §122 sink-leak guard)
 cc_channel/method_names.dart # part (§740): _CcMethods — the 57 native method names CcChannel calls
 cc_channel/models_*.dart     # parts (§740): the DTOs — tailscale · status · traffic · probe
-cc_openconnect.dart          # §654 C the models of the lxbox/cc/openconnect stream (endpoints, pending challenge)
+cc_openconnect.dart          # §654 C the models of the lxbox/cc/openconnect stream (endpoints, pending challenge, tunnel)
 platform_channels.dart       # §141 PlatformChannels — every MethodChannel/EventChannel name plus the Sora
                              #   editor viewType and channel prefix (§740: moved here from services/)
 pprof_profile.dart           # §207 PprofProfile — one pprof profile: native pathAndQuery, file name, UI label
@@ -2178,13 +2178,16 @@ cursor line stayed under the keyboard. The native view has a full
 |---|---|
 | Kotlin | [`SoraEditorPlatformView.kt`](../app/android/app/src/main/kotlin/com/leadaxe/lxbox/editor/SoraEditorPlatformView.kt): view type `lxbox/sora_editor`, a `MethodChannel` per view `com.leadaxe.lxbox/sora_editor_<id>` |
 | Assets | `app/android/app/src/main/assets/sora/`: TextMate grammars JSON, INI (VS Code, MIT) and URI (own), token themes `lx-light/lx-dark.json`; TextMate registries are process singletons |
+| Selection menu | sora's own panel `EditorTextActionWindow` (icons, not the system `ActionMode`), replaced by `LxTextActionWindow`: adds Delete before Cut, which erases the selection without the clipboard; the edit goes to undo |
 | R8 | [`proguard-sora.pro`](../app/android/app/proguard-sora.pro): keep for jcodings/joni/tm4e/sora — the TextMate engine loads classes by name |
 | Not Android | `flutter test` and desktop draw a `TextField` stub with the same layout (gate `Platform.isAndroid`, not `defaultTargetPlatform`) |
 
 Channel: Dart → native `setText`, `getText`, `setReadOnly`, `setDark` (+ the
-`ColorScheme` colors), `setLanguage`, `search*`; native → Dart `changed`
-{text?, lines, rowHeight, textOffsetX}, `cursor` {y, rowHeight, focused},
-`searchResult`, `disposed`. Creation params also carry `wordWrap`, `language`,
+`ColorScheme` colors), `setLanguage`, `search*`, `undo` / `redo`,
+`goToLine` {line}, `setLineNumbers` {enabled}, `setFontSize` {fontSize};
+native → Dart `changed` {text?, lines, rowHeight, textOffsetX}, `cursor` {y,
+rowHeight, focused}, `searchResult`, `undoState` {canUndo, canRedo} (only
+when it changes), `disposed`. Creation params also carry `wordWrap`, `language`,
 `locale` (the app language — the native selection menu takes its strings from
 the view context), `autofocus`, `stickyHeaders`. sora-editor draws sticky
 headers only without line wrapping, so the fields that have them (Config, the

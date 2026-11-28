@@ -256,6 +256,7 @@ class SettingsStorage {
     'node_manual_order',
     'profiler_retention_sec', // §044/new-profiler — окно хранения Live-журнала
     'editor_magnifier', // §660 — лупа выделения редактора кода
+    'editor_text_size', // §767 — поправка размера текста редактора кода
     'mixin_target_suggestions', // §704 — подсказки поля Target формы миксина
     kNodeBudgetKey, // бюджет узлов приложения
   };
@@ -734,6 +735,22 @@ class SettingsStorage {
     await _save();
   }
 
+  /// §767 — поправка размера текста редактора кода (логические пиксели,
+  /// от −4 до +8). Одна на всё приложение. Не config-significant.
+  /// Default 0.
+  static Future<int> getEditorTextSize() async {
+    final c = await _load();
+    final v = c['editor_text_size'];
+    return v is num ? v.toInt() : 0;
+  }
+
+  static Future<void> setEditorTextSize(int value) async {
+    final c = await _load();
+    c['editor_text_size'] = value;
+    SettingsStorage._cache = c;
+    await _save();
+  }
+
   /// §704 — подсказки автодополнения у поля Target формы миксина (значок
   /// справа в поле). Не config-significant → без markConfigDirty. Default true.
   static Future<bool> getMixinTargetSuggestions() async {
@@ -1094,6 +1111,15 @@ class SettingsStorage {
 
   static Future<void> setShownCrashStamp(String stamp) =>
       setVar('shown_crash_stamp', stamp);
+
+  /// §761 — отметка «плашку выпадающих цепочек скрыли» (хеш собранного
+  /// конфига и отказов, `chainTroubleStamp`). Новая сборка с другим
+  /// конфигом — другая отметка, плашка возвращается.
+  static Future<String> getDismissedChainTroubleStamp() async =>
+      getVar('dismissed_chain_trouble_stamp', '');
+
+  static Future<void> setDismissedChainTroubleStamp(String stamp) =>
+      setVar('dismissed_chain_trouble_stamp', stamp);
 
   // ---------------------------------------------------------------------------
   // Debug API (§031) — runtime toggle, bearer token, port.

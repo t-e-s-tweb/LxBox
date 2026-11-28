@@ -1455,6 +1455,39 @@
   "Pinned fingerprint": {
     "value": "Закреплённый отпечаток"
   },
+  "Fetch from server": {
+    "value": "Получить с сервера"
+  },
+  "Pin this certificate?": {
+    "value": "Закрепить этот сертификат?"
+  },
+  "Issued to": {
+    "value": "Кому выдан"
+  },
+  "Issued by": {
+    "value": "Кем выдан"
+  },
+  "Valid until": {
+    "value": "Действует до"
+  },
+  "Fingerprint": {
+    "value": "Отпечаток"
+  },
+  "Use": {
+    "value": "Использовать"
+  },
+  "Enter the server address first": {
+    "value": "Сначала укажите адрес сервера"
+  },
+  "No response from the server": {
+    "value": "Сервер не отвечает"
+  },
+  "No TLS on this address": {
+    "value": "По этому адресу нет TLS"
+  },
+  "Could not get the certificate": {
+    "value": "Не удалось получить сертификат"
+  },
   "Reconnect timeout": {
     "value": "Время переподключения"
   },
@@ -1828,6 +1861,15 @@
   },
   "Connected": {
     "value": "Подключено"
+  },
+  "Connected · since %s": {
+    "value": "Подключено · с %s"
+  },
+  "Transport": {
+    "value": "Транспорт"
+  },
+  "MTU": {
+    "value": "MTU"
   },
   "Connected to %s from inside the tunnel": {
     "value": "Соединение изнутри туннеля — с %s"
@@ -2619,6 +2661,36 @@
   "Magnifier": {
     "value": "Лупа"
   },
+  "Undo": {
+    "value": "Отменить"
+  },
+  "Redo": {
+    "value": "Повторить"
+  },
+  "Go to line": {
+    "value": "Перейти к строке"
+  },
+  "Go": {
+    "value": "Перейти"
+  },
+  "Replace with clipboard": {
+    "value": "Заменить из буфера"
+  },
+  "Line numbers": {
+    "value": "Номера строк"
+  },
+  "Text size": {
+    "value": "Размер текста"
+  },
+  "Smaller text": {
+    "value": "Мельче"
+  },
+  "Larger text": {
+    "value": "Крупнее"
+  },
+  "Lock editing": {
+    "value": "Запретить правку"
+  },
   "Imported: %s": {
     "value": "Импортировано: %s"
   },
@@ -3201,8 +3273,8 @@
   "Link contains a private key": {
     "value": "В ссылке закрытый ключ"
   },
-  "Link: the tag goes into its fragment on save.": {
-    "value": "Ссылка: тег при сохранении попадает в её фрагмент."
+  "Link: saved as is. The tag is stored separately.": {
+    "value": "Ссылка: сохраняется как есть. Тег хранится отдельно."
   },
   "List %d": {
     "value": "Список %d"
@@ -4057,12 +4129,6 @@
   "Position %s is MASQUE with fixed h3: QUIC through the previous hop may hang. Set vhttp: auto (or h2) on the node.": {
     "value": "Позиция %s — MASQUE с фиксированным h3: QUIC через предыдущий хоп может повиснуть. Включите у узла vhttp: auto (или h2)."
   },
-  "Not recommended: positions %s are tunnels (WireGuard, MASQUE, Tailscale, OpenVPN, OpenConnect) or contain them. After the first position the chain dials a copy of the node with the same keys, and a tunnel server keeps one session per key. While the node itself is in use, for example by a group check, the copy and the node knock each other off, and the group still shows the node as working.": {
-    "value": "Не рекомендуется: позиции %s — туннели (WireGuard, MASQUE, Tailscale, OpenVPN, OpenConnect) или содержат их. После первой позиции цепочка ходит через копию узла с теми же ключами, а сервер туннеля держит одну сессию на ключ. Пока сам узел тоже в работе, например его проверяет группа, копия и узел перебивают друг друга, а группа показывает узел рабочим."
-  },
-  "Tunnel: not recommended after the first position": {
-    "value": "Туннель: после первой позиции не рекомендуется"
-  },
   "Position %s is WireGuard behind a TCP hop: the previous server must actually proxy UDP, otherwise the handshake goes nowhere.": {
     "value": "Позиция %s — WireGuard за TCP-хопом: сервер предыдущей позиции должен реально проксировать UDP, иначе хендшейк уходит в никуда."
   },
@@ -4078,8 +4144,8 @@
   "Positions %s are empty — remove them: the core rejects a chain with a blank position.": {
     "value": "Позиции %s пусты — уберите их: цепочку с пустой позицией ядро отвергает."
   },
-  "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown.": {
-    "value": "У позиций %s есть свой detour — внутри цепочки он не действует: звено всегда ходит через предыдущую позицию. Путь ровно такой, как показано."
+  "Positions %s have their own detour — it does not apply inside a chain: a position past the first always dials through the previous one. The path is exactly as shown.": {
+    "value": "У позиций %s свой detour — внутри цепочки он не действует: позиция после первой всегда идёт через предыдущую. Путь ровно такой, как показан."
   },
   "Preferences, ping options, auto-update, wifi history": {
     "value": "Предпочтения, параметры пинга, автообновление, история Wi-Fi"
@@ -6825,6 +6891,9 @@
   "Applies when the node is online.": {
     "value": "Применится, когда узел будет в сети."
   },
+  "Applies after VPN restart.": {
+    "value": "Применится после перезапуска VPN."
+  },
   "Signing in with the new key…": {
     "value": "Вход с новым ключом…"
   },
@@ -7275,13 +7344,49 @@
   "\"%s\" is at positions %d and %d — make a copy of \"%s\" without \"%s\" for position %d.": {
     "value": "«%s» есть на позициях %d и %d — сделайте для позиции %6$d копию «%4$s» без «%5$s»."
   },
-  "\"%s\" is used in chain \"%s\" (position %d) and here at position %d — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.": {
-    "value": "«%s» используется в цепочке «%s» (позиция %d) и здесь на позиции %d — сделайте копию «%s» (и её узлов; копиям WireGuard нужны другие ключи) для одной из них."
-  },
-  "The detour of \"%s\" at the entry leads to \"%s\", which this chain takes over higher up — remove that detour or take \"%s\" out of this chain.": {
-    "value": "detour узла «%s» на входе ведёт в «%s», который эта цепочка берёт выше — уберите этот detour или уберите «%s» из цепочки."
-  },
   "The tag \"%s\" is taken by a node or group; the chain needs it for its hop — rename that node.": {
     "value": "Тег «%s» занят узлом или группой, а цепочке он нужен для хопа — переименуйте этот узел."
+  },
+  "Hop chain \"%s\" is not built": {
+    "value": "Цепочка «%s» не собирается"
+  },
+  "More chains are not built: %d.": {
+    "value": "Не собираются ещё цепочки: %d."
+  },
+  "Open chain": {
+    "value": "Открыть цепочку"
+  },
+  "\"%s\" is used in chain \"%s\" (position %d) and in chain \"%s\" (position %d) — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.": {
+    "value": "«%s» используется в цепочке «%s» (позиция %d) и в цепочке «%s» (позиция %d) — сделайте копию «%s» (и её узлов; копиям WireGuard нужны другие ключи) для одной из них."
+  },
+  "In chain \"%s\" the detour of \"%s\" at the entry leads to \"%s\", which the chain takes over higher up — remove that detour or take \"%s\" out of the chain.": {
+    "value": "В цепочке «%s» detour узла «%s» на входе ведёт в «%s», который цепочка берёт выше — уберите этот detour или уберите «%s» из цепочки."
+  },
+  "\"%s\" at position %d of chain \"%s\" has a fixed local port (%s) — remove the port from the node, or put a copy of the node without the port at this position.": {
+    "value": "«%s» на позиции %d цепочки «%s» имеет фиксированный локальный порт (%s) — уберите порт у узла или поставьте на эту позицию копию узла без порта."
+  },
+  "\"%s\" inside \"%s\" at position %d of chain \"%s\" has a fixed local port (%s) — remove the port from the node, or use a copy of the node without the port in \"%s\".": {
+    "value": "«%s» внутри «%s» на позиции %d цепочки «%s» имеет фиксированный локальный порт (%s) — уберите порт у узла или используйте в «%6$s» копию узла без порта."
+  },
+  "These changes can't be saved until the error is fixed. Leave without saving?": {
+    "value": "Эти изменения нельзя сохранить, пока не исправлена ошибка. Выйти без сохранения?"
+  },
+  "Node": {
+    "value": "Узел"
+  },
+  "SSL VPN client: Cisco AnyConnect (ocserv), Fortinet, Palo Alto GlobalProtect, Juniper / Pulse Secure.": {
+    "value": "Клиент SSL VPN: Cisco AnyConnect (ocserv), Fortinet, Palo Alto GlobalProtect, Juniper / Pulse Secure."
+  },
+  "Source — the node's original text. Save writes it as is.": {
+    "value": "Source — исходный текст узла. Save записывает его как есть."
+  },
+  "Recent checks": {
+    "value": "Последние проверки"
+  },
+  "History": {
+    "value": "История"
+  },
+  "Saved result from %s": {
+    "value": "Сохранённый результат от %s"
   }
 }

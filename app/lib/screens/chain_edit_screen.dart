@@ -36,6 +36,7 @@ import '../widgets/emoji_picker_button.dart';
 import '../widgets/reorder_grab_strip.dart';
 import '../services/chains/chain_form_validation.dart';
 import '../services/chains/chain_takeover.dart' show ChainBodies;
+import '../services/chains/chain_trouble_state.dart' show chainBodiesOfParsed;
 import '../services/chains/chain_hop_candidate.dart';
 import '../services/chains/chain_hop_targets.dart';
 import '../widgets/app_bottom_sheet.dart';
@@ -123,13 +124,7 @@ class _ChainEditScreenState extends State<ChainEditScreen> with SnackHelper {
   late List<ChainHopCandidate> _cands;
 
   /// §761 — тела последнего собранного конфига для проверки «один путь».
-  late final ChainBodies _bodies = {
-    for (final n in widget.config.byTag.values)
-      n.tag: (
-        section: n.kind == 'endpoint' ? 'endpoints' : 'outbounds',
-        body: n.raw,
-      ),
-  };
+  late final ChainBodies _bodies = chainBodiesOfParsed(widget.config);
   late Map<String, ChainHopCandidate> _lookup;
 
   @override
@@ -229,7 +224,8 @@ class _ChainEditScreenState extends State<ChainEditScreen> with SnackHelper {
       Navigator.pop(context);
       return;
     }
-    final action = await showUnsavedChangesDialog(context);
+    final action = await showUnsavedChangesDialog(context,
+        canSave: chainFormCanSave(_issues()));
     if (!mounted) return;
     if (action == 'save') {
       _save();
@@ -298,10 +294,7 @@ class _ChainEditScreenState extends State<ChainEditScreen> with SnackHelper {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
-      // §760 — новая позиция встаёт в конец: при непустой цепочке это
-      // позиция ≥1, где туннель идёт копией узла.
-      builder: (ctx) =>
-          _HopPickerSheet(options: options, markTunnels: _hops.isNotEmpty),
+      builder: (ctx) => _HopPickerSheet(options: options),
     );
     if (picked == null || !mounted) return;
     // §439 — кандидат знает свой адрес: в позицию уходит ссылка на узел.
@@ -552,13 +545,9 @@ class _ChainEditScreenState extends State<ChainEditScreen> with SnackHelper {
 /// Пикер позиции: список существующих целей с видом. Уже занятые исключены —
 /// ядро отвергает цепочку с дублем.
 class _HopPickerSheet extends StatelessWidget {
-  const _HopPickerSheet({required this.options, this.markTunnels = false});
+  const _HopPickerSheet({required this.options});
 
   final List<ChainHopCandidate> options;
-
-  /// §760 — помечать туннели (WireGuard, MASQUE, Tailscale, OpenVPN,
-  /// OpenConnect): добавляемая позиция будет ≥1, там они не рекомендуются.
-  final bool markTunnels;
 
   @override
   Widget build(BuildContext context) {
@@ -622,14 +611,6 @@ class _HopPickerSheet extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12, color: muted)),
-            trailing: markTunnels && c.tunnelInside
-                ? Tooltip(
-                    message: getLocalText.s(
-                        "Tunnel: not recommended after the first position"),
-                    child: Icon(Icons.warning_amber_outlined,
-                        size: 20, color: theme.colorScheme.tertiary),
-                  )
-                : null,
             onTap: () => Navigator.pop(context, c.tag),
           ),
       ];

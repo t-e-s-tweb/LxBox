@@ -259,9 +259,6 @@ void main() {
         tag: 'chain-1',
         enabled: false,
         hops: [NodeLink(tag: 'PR NL-1'), NodeLink(tag: 'Tokyo'), NodeLink(tag: 'vpn-1')],
-        idleTimeout: '5m',
-        stripEvasion: false,
-        strip: {'tls.utls': true, 'tls.fragment': false},
         rewrite: {
           'vless': {'flow': null, 'packet_encoding': 'xudp'},
         },
@@ -371,12 +368,12 @@ void main() {
 
     test('цепочка: настройки в body, позиции ссылками, поля позиции нет', () {
       final record = chainToRecord(const SourceChain(
-          tag: 'c', hops: [NodeLink(tag: 'a'), NodeLink(tag: 'b')], idleTimeout: '1m'));
+          tag: 'c', hops: [NodeLink(tag: 'a'), NodeLink(tag: 'b')]));
       expect(record, {
         'kind': 'chain',
         'tag': 'c',
         'enabled': true,
-        'body': {'type': 'chain', 'idle_timeout': '1m'},
+        'body': {'type': 'chain'},
         'hops': [
           {'tag': 'a'},
           {'tag': 'b'},
@@ -430,17 +427,17 @@ void main() {
       expect((read.value! as SubscriptionServers).updateIntervalHours, 6);
     });
 
-    test('тег записи разошёлся с текстом — побеждает текст, отметка в notes',
-        () {
+    test('тег записи разошёлся с текстом — побеждает тег записи (§456)', () {
       final notes = <String>[];
       final u = sourceFromRecord({
         'kind': 'server',
         'id': 'u',
-        'tag': 'Stale',
+        'tag': 'Mine',
         'origin': {'kind': 'uri', 'raw': _uriAlpha},
-      }, notes: notes).value!;
-      expect(u.nodes.single.tag, 'Alpha');
-      expect(notes.single, contains('Stale'));
+      }, notes: notes).value! as UserServer;
+      expect(u.nodes.single.tag, 'Mine');
+      expect(u.rawBody, _uriAlpha);
+      expect(notes, isEmpty);
     });
 
     test('запись без исходника: body с тегом записи становится JSON-текстом',

@@ -48,6 +48,7 @@ import '../services/parser/json_comments.dart';
 import '../services/parser/parse_all.dart';
 import '../services/parser/parse_env_snapshot.dart';
 import '../services/parser/source_classify.dart';
+import '../services/parser/source_name.dart';
 import '../services/parser/tailscale_split.dart';
 import '../services/parser/uri_parsers.dart';
 import '../services/parser/uri_utils.dart';
@@ -955,6 +956,16 @@ class SubscriptionController extends ChangeNotifier with _FolderOpsMixin {
   /// ошибку парса / отсутствие изменений — возвращаем исходный.
   UserServer _autoEmoji(UserServer us) {
     if (us.nodes.isEmpty || us.rawBody.isEmpty) return us;
+    if (keepsTagAsWritten(us.nodes.first)) return us; // §762 — impair
+    // `vpn://`: эмодзи — имя первого узла (`tag` записи), ссылка не меняется:
+    // фрагмент переименовал бы и прочие контейнеры профиля.
+    if (us.rawBody.startsWith('vpn://')) {
+      final first = us.nodes.first;
+      if (!hasEmoji(first.tag)) {
+        first.applyRecordName('${defaultEmojiFor(first)} ${first.tag}');
+      }
+      return us;
+    }
     final newRaw = _isJsonDocument(us.rawBody, us.dialect)
         ? _documentWithDefaultEmoji(us.rawBody, us.dialect, us.nodes.first)
         : withDefaultEmoji(us.rawBody, us.nodes.first);
@@ -2791,8 +2802,8 @@ class SubscriptionController extends ChangeNotifier with _FolderOpsMixin {
   }
 
   /// Обновляет inline-узлы `UserServer` из нового списка URI/JSON строк.
-  /// §456 — [nameHint]: имя для INI-текста (тег из поля Tag редактора);
-  /// ссылка и JSON несут имя сами, им hint не нужен.
+  /// §456 — [nameHint]: переименование (поле Tag редактора); текст источника
+  /// не меняется. `null` — имя берётся из изменённого текста или остаётся.
   ///
   /// §603 — источник, из которого не разобрался ни один узел, не пишется:
   /// запись остаётся прежней, возвращается ошибка (как у члена папки,
@@ -2814,9 +2825,15 @@ class SubscriptionController extends ChangeNotifier with _FolderOpsMixin {
     final nodes = <NodeSpec>[];
     for (final c in sources) {
       final decoded = decode(c);
-      nodes.addAll(parseAll(decoded, nameHint: nameHint, own: true));
+      nodes.addAll(parseAll(decoded, own: true));
     }
     if (nodes.isEmpty) return const ErrMsg(ErrKey.memberParseKeepCurrent);
+    // §456 — имя записи: явное переименование, иначе новое имя из текста,
+    // иначе прежнее.
+    final name = nameHint ??
+        nameWrittenByEdit(list.rawBody, sources.join('\n')) ??
+        (list.nodes.isEmpty ? '' : list.nodes.first.tag);
+    nodes.first.applyRecordName(name);
     final before = _lists();
     // Фича 478 / PARSING_PRINCIPLES §9.4 п. 1 — человек правил тело ручного сервера:
     // вердикт ядра привязан к ТЕЛУ и на изменённом теле недействителен.

@@ -68,13 +68,6 @@ enum ChainIssueCode {
   /// протоколах не существует, отказ выглядит чёрной дырой.
   wgBehindTcpHop,
 
-  /// Туннель (узел секции `endpoints`: WireGuard/AWG, Tailscale, OpenVPN,
-  /// OpenConnect) или MASQUE позицией ≥1 — сам узел или внутри группы/Направления. Ядро
-  /// ходит через копию узла с теми же ключами; сервер держит одну сессию на
-  /// ключ — копия и оригинал перебивают друг друга, а проверка группы смотрит
-  /// на оригинал и остаётся зелёной (§760, issue #233). Не запрет — совет.
-  tunnelOnLink,
-
   /// Позиция — цепочка, объявленная НИЖЕ по списку (ссылка вперёд).
   forwardChainReference,
 
@@ -94,8 +87,9 @@ enum ChainIssueCode {
   tagEmpty,
 
   /// Одному узлу или группе нужен один путь: кольцо, конфликт с другой
-  /// позицией или цепочкой, кольцо через detour, занятый тег хопа. Ядро такой
-  /// конфиг не грузит, сборка цепочку выбросит; подсказка — какую копию
+  /// позицией или цепочкой, кольцо через detour, занятый тег хопа; к тому же
+  /// коду — фиксированный локальный порт у узла позиции ≥ 1 (§761). Ядро
+  /// такой конфиг не грузит, сборка цепочку выбросит; подсказка — что
   /// сделать.
   onePath,
 }
@@ -158,8 +152,6 @@ class ChainFormState {
   const ChainFormState({
     required this.tag,
     required this.hops,
-    this.stripEvasion,
-    this.strip = const {},
   });
 
   /// [pool] и [lists] — показ позиций-ссылок финальными тегами (§439,
@@ -170,16 +162,12 @@ class ChainFormState {
     NodeLinkTargets? pool,
     List<ServerList> lists = const [],
   })  : tag = c.tag,
-        hops = [for (final h in c.hops) nodeLinkDisplay(h, pool, lists: lists)],
-        stripEvasion = c.stripEvasion,
-        strip = c.strip;
+        hops = [for (final h in c.hops) nodeLinkDisplay(h, pool, lists: lists)];
 
   final String tag;
 
   /// Позиции финальными тегами.
   final List<String> hops;
-  final bool? stripEvasion;
-  final Map<String, bool> strip;
 }
 
 /// §393 C6 — всё, что форма нашла в [state], в порядке показа.
@@ -371,34 +359,9 @@ List<ChainFormIssue> validateChainForm(
       code: ChainIssueCode.detourIgnoredOnLink,
       level: ChainIssueLevel.info,
       message: getLocalText.s("Positions %s have their own detour — it does not apply inside a chain: "
-        "a link always dials through the previous position. The path is exactly "
+        "a position past the first always dials through the previous one. The path is exactly "
         "as shown.", _list(detoured)),
       hops: detoured,
-    ));
-  }
-
-  // §760 — туннель на позиции ≥1. Позиция 0 не копируется ядром
-  // (`hop.go` ResolveLeaf: index 0 → сам узел), там конфликта нет.
-  final tunnelLinks = <String>[];
-  for (var i = 1; i < hops.length; i++) {
-    if ((ctx.candidates[hops[i]]?.tunnelInside ?? false) &&
-        !tunnelLinks.contains(hops[i])) {
-      tunnelLinks.add(hops[i]);
-    }
-  }
-  if (tunnelLinks.isNotEmpty) {
-    soft.add(ChainFormIssue(
-      code: ChainIssueCode.tunnelOnLink,
-      level: ChainIssueLevel.warning,
-      message: getLocalText.s(
-          "Not recommended: positions %s are tunnels (WireGuard, MASQUE, "
-          "Tailscale, OpenVPN, OpenConnect) or contain them. After the first position the "
-          "chain dials a copy of the node with the same keys, and a tunnel "
-          "server keeps one session per key. While the node itself is in use, "
-          "for example by a group check, the copy and the node knock each "
-          "other off, and the group still shows the node as working.",
-          _list(tunnelLinks)),
-      hops: tunnelLinks,
     ));
   }
 
@@ -451,32 +414,48 @@ bool chainFormCanSave(List<ChainFormIssue> issues) =>
 
 String _list(List<String> tags) => tags.join(', ');
 
-/// §761 — проверка сборки по последнему собранному конфигу: правленая
-/// цепочка встаёт последней, прочие цепочки конфига держат свои места.
-/// Кольцо или конфликт — ошибка с подсказкой, что сделать.
-ChainFormIssue? _onePathIssue(ChainFormState state, ChainFormContext ctx) {
-  if (ctx.bodies.isEmpty || state.hops.length < 2) return null;
-  final tag = state.tag.trim().isEmpty ? ctx.originalTag : state.tag.trim();
-  final bodies = <String, ({String section, Map<String, dynamic> body})>{
-    for (final e in ctx.bodies.entries)
-      if (e.key != ctx.originalTag && e.key != tag) e.key: e.value,
+/// §761 — проверка сборки по последнему собранному конфигу [bodies]:
+/// цепочка [state] встаёт последней, прочие цепочки конфига держат свои
+/// места. Отказ — кольцо, конфликт и прочее, из-за чего сборка цепочку
+/// выбросит; `null` — цепочка собирается. [originalTag] — прежний тег
+/// цепочки: её же экземпляр в конфиге не считается чужим.
+///
+/// Одна проверка на редактор и на плашку главного экрана
+/// (`chain_trouble_state.dart`).
+ChainTakeoverFailure? chainOnePathFailure(
+  ChainFormState state,
+  ChainBodies bodies, {
+  String originalTag = '',
+}) {
+  if (bodies.isEmpty || state.hops.length < 2) return null;
+  final tag = state.tag.trim().isEmpty ? originalTag : state.tag.trim();
+  final local = <String, ({String section, Map<String, dynamic> body})>{
+    for (final e in bodies.entries)
+      if (e.key != originalTag && e.key != tag) e.key: e.value,
   };
-  bodies[tag] = (
+  local[tag] = (
     section: 'outbounds',
     body: {'tag': tag, 'type': 'chain', 'outbounds': [...state.hops]},
   );
   final others = [
-    for (final e in bodies.entries)
+    for (final e in local.entries)
       if (e.value.body['type'] == 'chain' && e.key != tag) e.key,
   ];
-  final f = checkChainTakeover(bodies, [...others, tag])
+  return checkChainTakeover(local, [...others, tag])
       .where((f) => f.chain == tag)
       .firstOrNull;
-  if (f == null) return null;
+}
+
+/// Что не так и что сделать — для находки формы и для плашки главного
+/// экрана. `null` — отказ, который форма называет своей находкой (повтор,
+/// вложенная цепочка): на плашку он не идёт.
+///
+/// Обе цепочки называются по тегу — одинаково в редакторе и на плашке.
+String? chainOnePathMessage(ChainTakeoverFailure f) {
   final p = f.position + 1;
   final op = f.otherPosition + 1;
   final hint = f.copyHint;
-  final message = switch (f.fault) {
+  return switch (f.fault) {
     ChainTakeoverFault.ring when hint != null && hint.position == 0 =>
       getLocalText.s(
           "\"%s\" at position %d is also inside \"%s\" at the entry — make a copy of \"%s\" without \"%s\" for the entry.",
@@ -488,11 +467,17 @@ ChainFormIssue? _onePathIssue(ChainFormState state, ChainFormContext ctx) {
         "\"%s\" is at positions %d and %d — make a copy of \"%s\" without \"%s\" for position %d.",
         f.tag, op, p, hint.group, f.tag, hint.position + 1),
     ChainTakeoverFault.otherChain => getLocalText.s(
-        "\"%s\" is used in chain \"%s\" (position %d) and here at position %d — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.",
-        f.tag, f.otherChain, op, p, f.tag),
+        "\"%s\" is used in chain \"%s\" (position %d) and in chain \"%s\" (position %d) — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.",
+        f.tag, f.otherChain, op, f.chain, p, f.tag),
     ChainTakeoverFault.detourRing => getLocalText.s(
-        "The detour of \"%s\" at the entry leads to \"%s\", which this chain takes over higher up — remove that detour or take \"%s\" out of this chain.",
-        f.tag, f.via, f.via),
+        "In chain \"%s\" the detour of \"%s\" at the entry leads to \"%s\", which the chain takes over higher up — remove that detour or take \"%s\" out of the chain.",
+        f.chain, f.tag, f.via, f.via),
+    ChainTakeoverFault.localPort when f.via == f.tag => getLocalText.s(
+        "\"%s\" at position %d of chain \"%s\" has a fixed local port (%s) — remove the port from the node, or put a copy of the node without the port at this position.",
+        f.tag, p, f.chain, f.fields.join(', ')),
+    ChainTakeoverFault.localPort => getLocalText.s(
+        "\"%s\" inside \"%s\" at position %d of chain \"%s\" has a fixed local port (%s) — remove the port from the node, or use a copy of the node without the port in \"%s\".",
+        f.tag, f.via, p, f.chain, f.fields.join(', '), f.via),
     ChainTakeoverFault.hopTagTaken => getLocalText.s(
         "The tag \"%s\" is taken by a node or group; the chain needs it for its hop — rename that node.",
         f.tag),
@@ -500,6 +485,13 @@ ChainFormIssue? _onePathIssue(ChainFormState state, ChainFormContext ctx) {
     // кольцо без группы (узел стоит позицией дважды) — тот же повтор.
     _ => null,
   };
+}
+
+ChainFormIssue? _onePathIssue(ChainFormState state, ChainFormContext ctx) {
+  final f =
+      chainOnePathFailure(state, ctx.bodies, originalTag: ctx.originalTag);
+  if (f == null) return null;
+  final message = chainOnePathMessage(f);
   if (message == null) return null;
   return ChainFormIssue(
     code: ChainIssueCode.onePath,

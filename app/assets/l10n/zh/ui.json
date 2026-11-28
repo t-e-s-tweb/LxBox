@@ -1263,6 +1263,39 @@
   "Pinned fingerprint": {
     "value": "固定指纹"
   },
+  "Fetch from server": {
+    "value": "从服务器获取"
+  },
+  "Pin this certificate?": {
+    "value": "固定此证书？"
+  },
+  "Issued to": {
+    "value": "颁发给"
+  },
+  "Issued by": {
+    "value": "颁发者"
+  },
+  "Valid until": {
+    "value": "有效期至"
+  },
+  "Fingerprint": {
+    "value": "指纹"
+  },
+  "Use": {
+    "value": "使用"
+  },
+  "Enter the server address first": {
+    "value": "请先填写服务器地址"
+  },
+  "No response from the server": {
+    "value": "服务器无响应"
+  },
+  "No TLS on this address": {
+    "value": "此地址没有 TLS"
+  },
+  "Could not get the certificate": {
+    "value": "无法获取证书"
+  },
   "Reconnect timeout": {
     "value": "重连超时"
   },
@@ -1606,6 +1639,15 @@
   },
   "Connected": {
     "value": "已连接"
+  },
+  "Connected · since %s": {
+    "value": "已连接 · 自 %s 起"
+  },
+  "Transport": {
+    "value": "传输"
+  },
+  "MTU": {
+    "value": "MTU"
   },
   "Connected to %s from inside the tunnel": {
     "value": "已在隧道内连接到 %s"
@@ -2385,6 +2427,36 @@
   "Magnifier": {
     "value": "放大镜"
   },
+  "Undo": {
+    "value": "撤销"
+  },
+  "Redo": {
+    "value": "重做"
+  },
+  "Go to line": {
+    "value": "转到行"
+  },
+  "Go": {
+    "value": "转到"
+  },
+  "Replace with clipboard": {
+    "value": "用剪贴板替换"
+  },
+  "Line numbers": {
+    "value": "行号"
+  },
+  "Text size": {
+    "value": "文字大小"
+  },
+  "Smaller text": {
+    "value": "缩小文字"
+  },
+  "Larger text": {
+    "value": "放大文字"
+  },
+  "Lock editing": {
+    "value": "锁定编辑"
+  },
   "Imported: %s": {
     "value": "已导入：%s"
   },
@@ -2955,8 +3027,8 @@
   "Link contains a private key": {
     "value": "链接中包含私钥"
   },
-  "Link: the tag goes into its fragment on save.": {
-    "value": "链接：保存时标签会写入其片段。"
+  "Link: saved as is. The tag is stored separately.": {
+    "value": "链接：按原样保存。标签单独存储。"
   },
   "List %d": {
     "value": "列表 %d"
@@ -3799,12 +3871,6 @@
   "Position %s is MASQUE with fixed h3: QUIC through the previous hop may hang. Set vhttp: auto (or h2) on the node.": {
     "value": "位置 %s 是固定 h3 的 MASQUE：经上一跳的 QUIC 可能卡住。请把该节点的 vhttp 设为 auto（或 h2）。"
   },
-  "Not recommended: positions %s are tunnels (WireGuard, MASQUE, Tailscale, OpenVPN, OpenConnect) or contain them. After the first position the chain dials a copy of the node with the same keys, and a tunnel server keeps one session per key. While the node itself is in use, for example by a group check, the copy and the node knock each other off, and the group still shows the node as working.": {
-    "value": "不建议：位置 %s 是隧道（WireGuard、MASQUE、Tailscale、OpenVPN、OpenConnect）或包含隧道。从第二个位置起，链路通过使用相同密钥的节点副本连接，而隧道服务器对每个密钥只保留一个会话。当节点本身也在使用中（例如被组检测）时，副本与节点会相互挤掉，而组仍显示该节点可用。"
-  },
-  "Tunnel: not recommended after the first position": {
-    "value": "隧道：不建议放在第一个位置之后"
-  },
   "Position %s is WireGuard behind a TCP hop: the previous server must actually proxy UDP, otherwise the handshake goes nowhere.": {
     "value": "位置 %s 是位于 TCP 跳之后的 WireGuard：上一跳服务器必须能真正转发 UDP，否则握手无处可去。"
   },
@@ -3820,8 +3886,8 @@
   "Positions %s are empty — remove them: the core rejects a chain with a blank position.": {
     "value": "位置 %s 为空——请移除：内核不接受含空位置的链路。"
   },
-  "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown.": {
-    "value": "位置 %s 自带 detour——它在链路内部不生效：每一环始终经上一位置拨号。路径就如所示。"
+  "Positions %s have their own detour — it does not apply inside a chain: a position past the first always dials through the previous one. The path is exactly as shown.": {
+    "value": "位置 %s 有自己的 detour——在链内不生效：第一个之后的位置总是经由前一个位置连接。路径与显示完全一致。"
   },
   "Preferences, ping options, auto-update, wifi history": {
     "value": "偏好设置、测速选项、自动更新、Wi-Fi 历史"
@@ -6537,6 +6603,9 @@
   "Applies when the node is online.": {
     "value": "节点在线时生效。"
   },
+  "Applies after VPN restart.": {
+    "value": "重启 VPN 后生效。"
+  },
   "Signing in with the new key…": {
     "value": "正在使用新密钥登录…"
   },
@@ -6987,13 +7056,49 @@
   "\"%s\" is at positions %d and %d — make a copy of \"%s\" without \"%s\" for position %d.": {
     "value": "“%s”同时位于位置 %d 和 %d——请为位置 %6$d 复制一份不含“%5$s”的“%4$s”。"
   },
-  "\"%s\" is used in chain \"%s\" (position %d) and here at position %d — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.": {
-    "value": "“%s”已在链“%s”（位置 %d）中使用，这里又在位置 %d——请为其中之一复制“%s”（及其节点；WireGuard 副本需要其他密钥）。"
-  },
-  "The detour of \"%s\" at the entry leads to \"%s\", which this chain takes over higher up — remove that detour or take \"%s\" out of this chain.": {
-    "value": "入口处“%s”的 detour 指向“%s”，而该链在更高位置接管了它——请删除该 detour，或把“%s”移出此链。"
-  },
   "The tag \"%s\" is taken by a node or group; the chain needs it for its hop — rename that node.": {
     "value": "标签“%s”已被节点或组占用，而链的跃点需要它——请重命名该节点。"
+  },
+  "Hop chain \"%s\" is not built": {
+    "value": "跳转链路“%s”未构建"
+  },
+  "More chains are not built: %d.": {
+    "value": "另有未构建的跳转链路：%d。"
+  },
+  "Open chain": {
+    "value": "打开跳转链路"
+  },
+  "\"%s\" is used in chain \"%s\" (position %d) and in chain \"%s\" (position %d) — make a copy of \"%s\" (and its nodes; WireGuard copies need other keys) for one of them.": {
+    "value": "“%s”已在链“%s”（位置 %d）和链“%s”（位置 %d）中使用——请为其中之一复制“%s”（及其节点；WireGuard 副本需要其他密钥）。"
+  },
+  "In chain \"%s\" the detour of \"%s\" at the entry leads to \"%s\", which the chain takes over higher up — remove that detour or take \"%s\" out of the chain.": {
+    "value": "在链“%s”中，入口处“%s”的 detour 指向“%s”，而该链在更高位置接管了它——请删除该 detour，或把“%s”移出该链。"
+  },
+  "\"%s\" at position %d of chain \"%s\" has a fixed local port (%s) — remove the port from the node, or put a copy of the node without the port at this position.": {
+    "value": "链“%3$s”位置 %2$d 的“%1$s”设置了固定本地端口（%4$s）——请删除该节点的端口，或在此位置放一份不带端口的节点副本。"
+  },
+  "\"%s\" inside \"%s\" at position %d of chain \"%s\" has a fixed local port (%s) — remove the port from the node, or use a copy of the node without the port in \"%s\".": {
+    "value": "链“%4$s”位置 %3$d 的“%2$s”中的“%1$s”设置了固定本地端口（%5$s）——请删除该节点的端口，或在“%6$s”中使用不带端口的节点副本。"
+  },
+  "These changes can't be saved until the error is fixed. Leave without saving?": {
+    "value": "在修正错误之前无法保存这些更改。不保存就离开吗？"
+  },
+  "Node": {
+    "value": "节点"
+  },
+  "SSL VPN client: Cisco AnyConnect (ocserv), Fortinet, Palo Alto GlobalProtect, Juniper / Pulse Secure.": {
+    "value": "SSL VPN 客户端：Cisco AnyConnect（ocserv）、Fortinet、Palo Alto GlobalProtect、Juniper / Pulse Secure。"
+  },
+  "Source — the node's original text. Save writes it as is.": {
+    "value": "Source — 节点的原始文本。Save 会按原样写入。"
+  },
+  "Recent checks": {
+    "value": "最近的检查"
+  },
+  "History": {
+    "value": "历史记录"
+  },
+  "Saved result from %s": {
+    "value": "%s 保存的结果"
   }
 }

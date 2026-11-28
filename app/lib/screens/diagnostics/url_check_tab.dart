@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../controllers/home_controller.dart';
 import '../../services/app_info_cache.dart';
 import '../../services/diagnostics/connection_test.dart';
+import '../../services/diagnostics/url_check_history.dart';
 import '../../services/l10n/locale_controller.dart';
 import '../../widgets/ui_helpers.dart';
 import '../../vpn/cc_channel.dart';
@@ -39,7 +40,13 @@ class _UrlCheckTabState extends State<UrlCheckTab>
   String _runLink = '';
   ConnectionTestDepth _runDepth = ConnectionTestDepth.http;
   String _runApp = '';
+  bool _runFresh = false;
   bool _running = false;
+
+  /// Показан сохранённый результат из истории: время той проверки.
+  DateTime? _savedAt;
+
+  final _scroll = ScrollController();
 
   /// Стадии, которые пользователь переключил против умолчания [_autoOpen].
   final Set<int> _toggled = {};
@@ -63,6 +70,7 @@ class _UrlCheckTabState extends State<UrlCheckTab>
     widget.homeController.removeListener(_onHome);
     _stop();
     _urlCtrl.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -88,7 +96,9 @@ class _UrlCheckTabState extends State<UrlCheckTab>
       _runLink = link;
       _runDepth = _depth;
       _runApp = _packageName;
+      _runFresh = _fresh;
       _running = true;
+      _savedAt = null;
       _toggled.clear();
       _focus = const {};
     });
@@ -98,7 +108,10 @@ class _UrlCheckTabState extends State<UrlCheckTab>
         trace.apply(e);
         if (trace.finished) _running = false;
       });
-      if (trace.finished) _sub?.cancel();
+      if (trace.finished) {
+        _sub?.cancel();
+        _record(trace);
+      }
     });
     final ok = await _cc.startConnectionTest(
       link: link,
@@ -112,6 +125,7 @@ class _UrlCheckTabState extends State<UrlCheckTab>
         _running = false;
       });
       _sub?.cancel();
+      _record(trace);
     }
   }
 
@@ -121,7 +135,164 @@ class _UrlCheckTabState extends State<UrlCheckTab>
     if (_running) {
       _cc.stopConnectionTest();
       _running = false;
+      final t = _trace;
+      if (t != null) _record(t);
     }
+  }
+
+  /// Закончившаяся проверка — в историю (только память процесса).
+  void _record(ConnectionTestTrace t) {
+    final (sev, text) = _summaryOf(t);
+    UrlCheckHistory.instance.add(UrlCheckRecord(
+      link: _runLink,
+      depth: _runDepth,
+      outcome: switch (sev) {
+        BannerSeverity.success => UrlCheckOutcome.success,
+        BannerSeverity.warning => UrlCheckOutcome.warning,
+        BannerSeverity.error => UrlCheckOutcome.error,
+        BannerSeverity.info => UrlCheckOutcome.stopped,
+      },
+      summary: text,
+      at: DateTime.now(),
+      packageName: _runApp,
+      fresh: _runFresh,
+      trace: t,
+    ));
+  }
+
+  /// Адрес из ▾: только в поле, проверку запускает Run.
+  void _pickLink(String link) {
+    setState(() {
+      _urlCtrl.text = link;
+      _urlCtrl.selection = TextSelection.collapsed(offset: link.length);
+      _urlError = null;
+      _resetResult();
+    });
+    // Закрытие меню возвращает фокус полю и поднимает клавиатуру; печатать
+    // нечего — снимаем фокус следующим кадром (как у полей с подсказками).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).unfocus();
+    });
+  }
+
+  /// Строка истории: её результат и параметры наверху, без нового запроса.
+  void _showSaved(UrlCheckRecord r) {
+    FocusScope.of(context).unfocus();
+    _stop();
+    setState(() {
+      _urlCtrl.text = r.link;
+      _urlCtrl.selection = TextSelection.collapsed(offset: r.link.length);
+      _urlError = null;
+      _depth = r.depth;
+      _packageName = r.packageName;
+      _fresh = r.fresh;
+      _trace = r.trace;
+      _runLink = r.link;
+      _runDepth = r.depth;
+      _runApp = r.packageName;
+      _runFresh = r.fresh;
+      _toggled.clear();
+      _focus = const {};
+      _savedAt = r.at;
+    });
+    if (_scroll.hasClients) {
+      _scroll.animateTo(0,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+  }
+
+  static String _hhmm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Widget? _urlSuffix() {
+    final clear = _urlCtrl.text.isEmpty
+        ? null
+        : IconButton(
+            tooltip: getLocalText.s("Clear"),
+            icon: const Icon(Icons.clear),
+            onPressed: () => setState(() {
+              _urlCtrl.clear();
+              _resetResult();
+            }),
+          );
+    final history = UrlCheckHistory.instance;
+    if (history.isEmpty) return clear;
+    final menu = PopupMenuButton<String>(
+      tooltip: getLocalText.s("Recent checks"),
+      icon: const Icon(Icons.arrow_drop_down),
+      enabled: !_running,
+      position: PopupMenuPosition.under,
+      onSelected: _pickLink,
+      itemBuilder: (ctx) => [
+        for (final link in history.links)
+          PopupMenuItem<String>(
+            value: link,
+            child: Text(
+              link,
+              style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+      ],
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [?clear, menu],
+    );
+  }
+
+  Widget _historyRow(BuildContext context, UrlCheckRecord r) {
+    final sev = switch (r.outcome) {
+      UrlCheckOutcome.success => BannerSeverity.success,
+      UrlCheckOutcome.warning => BannerSeverity.warning,
+      UrlCheckOutcome.error => BannerSeverity.error,
+      UrlCheckOutcome.stopped => BannerSeverity.info,
+    };
+    final color = bannerIconColor(context, sev);
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: _running ? null : () => _showSaved(r),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(
+              switch (r.outcome) {
+                UrlCheckOutcome.success => Icons.check_circle,
+                UrlCheckOutcome.warning => Icons.warning_amber_rounded,
+                UrlCheckOutcome.error => Icons.error,
+                UrlCheckOutcome.stopped => Icons.stop_circle_outlined,
+              },
+              size: 20,
+              color: color,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    r.link,
+                    style: theme.textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  Text(
+                    // Время первым: длинный текст ошибки режется с конца.
+                    '${_hhmm(r.at)} · ${r.summary}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: color),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Результат относится к параметрам своего прогона: смена любого из них
@@ -129,6 +300,7 @@ class _UrlCheckTabState extends State<UrlCheckTab>
   void _resetResult() {
     _stop();
     _trace = null;
+    _savedAt = null;
     _toggled.clear();
     _focus = const {};
   }
@@ -177,7 +349,10 @@ class _UrlCheckTabState extends State<UrlCheckTab>
     final cs = Theme.of(context).colorScheme;
     final trace = _trace;
     final rows = trace?.rows() ?? const <TraceRow>[];
+    final history = UrlCheckHistory.instance.items;
+    final savedAt = _savedAt;
     return ListView(
+      controller: _scroll,
       padding: const EdgeInsets.all(16).withSafeBottom(context),
       children: [
         TextField(
@@ -193,16 +368,7 @@ class _UrlCheckTabState extends State<UrlCheckTab>
             _resetResult();
           }),
           decoration: InputDecoration(
-            suffixIcon: _urlCtrl.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: getLocalText.s("Clear"),
-                    icon: const Icon(Icons.clear),
-                    onPressed: () => setState(() {
-                      _urlCtrl.clear();
-                      _resetResult();
-                    }),
-                  ),
+            suffixIcon: _urlSuffix(),
             labelText: getLocalText.s("URL"),
             hintText: getLocalText.s("example.com or https://…"),
             errorText: _urlError,
@@ -308,16 +474,37 @@ class _UrlCheckTabState extends State<UrlCheckTab>
         if (trace != null) ...[
           const SizedBox(height: 16),
           _summary(context, trace),
+          if (savedAt != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 32, bottom: 4),
+              child: Text(
+                getLocalText.s("Saved result from %s", _hhmm(savedAt)),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
           for (final f in trace.result?.findings ?? const <TestFinding>[])
             _finding(context, f),
           const SizedBox(height: 8),
           for (final row in rows) _stageRow(context, trace, row),
         ],
+        if (history.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text(
+            getLocalText.s("History"),
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          for (final r in history) _historyRow(context, r),
+        ],
       ],
     );
   }
 
-  Widget _summary(BuildContext context, ConnectionTestTrace t) {
+  /// Уровень и текст строки итога; без контекста — пишется и в историю.
+  (BannerSeverity, String) _summaryOf(ConnectionTestTrace t) {
     final r = t.result;
     final root = t.rootStage;
     late final BannerSeverity sev;
@@ -350,6 +537,12 @@ class _UrlCheckTabState extends State<UrlCheckTab>
           ? getLocalText.s("HTTP %d · %d ms", r.httpStatus, r.elapsedMs)
           : getLocalText.s("Completed · %d ms", r.elapsedMs);
     }
+    return (sev, text);
+  }
+
+  Widget _summary(BuildContext context, ConnectionTestTrace t) {
+    final r = t.result;
+    final (sev, text) = _summaryOf(t);
     final truncated = r?.stagesTruncated == true;
     final color = bannerIconColor(context, sev);
     return Row(

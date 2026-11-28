@@ -297,7 +297,7 @@ carries only such an address is added as that subscription.
 
 The **Masquerade** section of your own WireGuard or AmneziaWG server adds
 decoy packets before the handshake: the client sends packets that look like
-QUIC, DNS, STUN or SIP. Where: server screen → Settings → Masquerade.
+QUIC, DNS, STUN or SIP. Where: server screen → Node → Masquerade.
 Options:
 
 | Option | Domain |
@@ -324,7 +324,21 @@ A JSON body can hold keys a `.conf` has no place for; the tab lists them
 under the text as "Not in INI". **Edit INI** makes this text the server's
 source and opens Source; the tag and the detour server stay as they are.
 
-The **Source** tab of your own server and of a folder's server shows the
+The tabs of a server screen are **Node** (tag, detour, TLS and the other
+settings), a tab named after the protocol (**VLESS**, **WireGuard**,
+**OpenConnect**…) with the server's source, **JSON** and **Diagnostics**.
+On OpenConnect the protocol tab holds the connection form (server
+certificate and the rest) above the source text. Under **Pinned
+fingerprint**, **Fetch from server** connects to the server address, shows
+who the certificate is issued to, who issued it, the expiry date and the
+fingerprint; **Use** puts that fingerprint into the field. An OpenConnect server
+also has a **Network** tab before Diagnostics: while the VPN is on it shows
+the connection to the gateway: state and since when, gateway and protocol
+flavor, transport (DTLS or TLS), the address and DNS servers the gateway
+gave, MTU. If the connection failed, the tab shows the core's error. Tap a
+row to copy its value.
+
+The protocol tab of your own server and of a folder's server shows the
 text it came from: a link, a `.conf` or JSON. Comments in JSON — `//`,
 `/* */` and `#` to the end of the line — are kept with the text: your notes
 on a server stay on Source after pasting, saving and restoring a backup.
@@ -1431,16 +1445,6 @@ running core.
   only over UDP and has no fallback transport. You cannot spot the bad case in
   advance: the connection looks successful, and the server either forwards the
   datagrams or drops them without a word.
-- Tunnels after the first position are not recommended: WireGuard
-  (AmneziaWG included), MASQUE, Tailscale, OpenVPN and OpenConnect, as a node
-  or inside a group or direction. From the second position on, the chain dials
-  a copy of the node with the same keys, and a tunnel server keeps one session
-  per key. While the node itself is also in use, for example by a group check,
-  the copy and the node knock each other off, and the group still shows the
-  node as working. The chain editor warns about such positions and marks
-  tunnels in the list of positions to add; the chain can still be saved. Proxy
-  protocols (VLESS, Trojan, Hysteria2, TUIC and others) open a connection per
-  request and are not affected.
 - An HTTP proxy carries only TCP connections. Nodes with a TCP transport
   (VLESS, Trojan, VMess) work behind it fully, including the UDP of apps that
   they wrap inside their own stream. Nodes that speak UDP themselves
@@ -1693,7 +1697,7 @@ config, and keeps it while the tunnel runs.
 
 The section sets the default for all servers. The same four options can be
 overridden for one subscription or folder (its settings tab, **TLS** section)
-and for one server (the server's Settings tab, **TLS** section, under
+and for one server (the server's Node tab, **TLS** section, under
 Detour). Each option is resolved on its own: server, then
 subscription or folder, then the global section; **Default** takes the value
 from the level above, and the row shows which one. **Off** on a server turns
@@ -2333,7 +2337,7 @@ Diagnostic tools, from simple to detailed:
 | Ping and the ⚠ icon | Home screen | ERR: the node does not answer. ⚠: other servers go out through the node and fail with it; tap to see which ones. `no route`: a tunnel without a route to the internet (WireGuard whose allowed IPs cover less than half of the address space, for example a couple of private networks; OpenVPN or OpenConnect with Only its own networks); the ping goes to an internet address, so such a node is not pinged. |
 | Stats | Statistics, while the VPN is on | Traffic per direction: where the bytes go. |
 | Conns | Statistics | Live connections: app, host, rule, chain of exits. Connections with traffic in one direction only are highlighted: replies get lost on the way, for example when the carrier cuts the protocol. |
-| URL Check | ≡ → Diagnostics, with the VPN on | A real request to an address through the current routing, from any app or a chosen one: DNS, route, connection and HTTP answer step by step; the step that failed is marked. From scratch skips the DNS cache and opened connections. |
+| URL Check | ≡ → Diagnostics, with the VPN on | A real request to an address through the current routing, from any app or a chosen one: DNS, route, connection and HTTP answer step by step; the step that failed is marked. From scratch skips the DNS cache and opened connections. History at the bottom keeps the last 20 checks until the app restarts; tap one to see its saved result without a new request, Run checks it again. The ▾ at the end of the URL field puts a recent address into the field. |
 | Profiler | Statistics | A real-time recording of connections and DNS resolves, with filters by app, domain and IP: which domain fails to resolve, which direction a request took, where an app connects. For DNS groups you see which members answered and which stayed silent. |
 | Log | Debug (side menu) | The app and core log. **Verbose (TRACE/DEBUG)** in App Settings → Diagnostics turns on the detailed log; the switch is inactive until Forward sing-box logs is on, and the lines appear after the app restarts. The Log tab links there. |
 | Crashes, OOM, Profiling | Debug | Core crash reports, core memory snapshots on low memory, pprof profiles for the developer. |
@@ -2583,7 +2587,7 @@ empty filter offers it on its own: manual selection, the auto twin's test and
 the ping in the server list reach B directly. A detour changes B itself, and
 the config keeps no direct path to it.
 
-1. Detour on B: Servers → tap B → Settings tab → **Detour server** → A →
+1. Detour on B: Servers → tap B → Node tab → **Detour server** → A →
    Save.
 2. Only B in the direction: Routing → Directions → VPN ① (`vpn-1`) →
    **Node filter (regex)** — a pattern that matches B's name and nothing else:
